@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <title>Centrum bez samochodów — Gazeta Testowa</title>
+    <meta property="og:title" content="Centrum bez samochodów" />
+    <meta property="og:description" content="Osiem ulic zmieni organizację ruchu." />
+    <meta name="author" content="Anna Kowalska" />
+  </head>
+  <body>
+    <header>
+      <nav><a href="/dzial">Dział</a> · <a href="/kontakt">Kontakt</a></nav>
+    </header>
+
+    <article>
+      <h1>Centrum bez samochodów</h1>
+      <p class="byline">Anna Kowalska</p>
+
+      <p>
+        Rada miasta przyjęła wczoraj uchwałę o zmianie organizacji ruchu w ścisłym centrum.
+        Zmiany obejmą osiem ulic, a pierwsze znaki pojawią się jeszcze w tym miesiącu.
+        Urzędnicy przekonują, że na przebudowie skorzystają przede wszystkim piesi i rowerzyści,
+        bo chodniki zostaną poszerzone kosztem miejsc parkingowych wzdłuż jezdni.
+      </p>
+
+      <h2>Co się zmieni</h2>
+      <p>
+        Najwięcej zmian czeka ulicę Długą, która stanie się deptakiem na całej długości.
+        Dojazd do posesji zachowają mieszkańcy i dostawcy, ale wyłącznie w godzinach porannych.
+        Radni zapowiadają, że po roku sprawdzą, czy rozwiązanie się sprawdziło, i wtedy zdecydują
+        o objęciu nim kolejnych ulic w okolicy dworca.
+      </p>
+
+      <figure>
+        <img src="/foto.png" alt="Ulica po przebudowie" />
+        <figcaption>Ulica Długa po przebudowie</figcaption>
+      </figure>
+
+      <p>
+        Przeciwnicy zmian wskazują na kupców, którzy obawiają się spadku obrotów po zamknięciu
+        ulicy dla samochodów. Miasto obiecuje im rekompensatę w postaci niższego czynszu przez
+        pierwszy rok oraz nowe miejsca parkingowe w parkingu kubaturowym dwie przecznice dalej.
+      </p>
+
+      <!-- Ładunki, które nie mają prawa dojść do czytnika. -->
+      <script>
+        window.__savelyXss = 'ten skrypt nie ma prawa zadziałać w czytniku';
+      </script>
+      <p><a href="javascript:alert(1)">link, który nie powinien przetrwać</a></p>
+      <img src="nie-ma-takiego-pliku.png" onerror="window.__savelyXss = 'onerror'" alt="pusty" />
+    </article>
+
+    <footer><p>Stopka serwisu, której nie chcemy w czytniku.</p></footer>
+  </body>
+</html>

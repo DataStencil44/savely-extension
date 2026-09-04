@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Savely</title>
+    <link rel="stylesheet" href="./list.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__row">
+        <h1 class="brand">Savely</h1>
+        <div class="topbar__actions">
+          <button id="save" class="button" type="button">Zapisz tę stronę</button>
+          <button id="help" class="icon" type="button" title="Skróty klawiszowe (?)" aria-label="Skróty klawiszowe">
+            ?
+          </button>
+          <button id="options" class="icon" type="button" title="Dane: eksport, import, kopie" aria-label="Dane i kopie">
+            ⚙
+          </button>
+        </div>
+      </div>
+
+      <p id="status" class="status" role="status" hidden></p>
+
+      <input
+        id="search"
+        class="search"
+        type="search"
+        placeholder="Szukaj w zapisanych… (/)"
+        autocomplete="off"
+        spellcheck="false"
+        aria-label="Szukaj w zapisanych"
+      />
+
+      <nav class="tabs" role="tablist" aria-label="Widoki listy">
+        <button class="tab" type="button" role="tab" data-tab="inbox" aria-selected="true">
+          Do przeczytania <span class="tab__count">0</span>
+        </button>
+        <button class="tab" type="button" role="tab" data-tab="favorite" aria-selected="false">
+          Ulubione <span class="tab__count">0</span>
+        </button>
+        <button class="tab" type="button" role="tab" data-tab="archive" aria-selected="false">
+          Archiwum <span class="tab__count">0</span>
+        </button>
+      </nav>
+
+      <div id="active-tags" class="chips" hidden></div>
+    </header>
+
+    <main class="main">
+      <div id="scroller" class="scroller">
+        <div id="sizer" class="sizer">
+          <ul id="rows" class="rows" role="listbox" aria-label="Zapisane pozycje"></ul>
+        </div>
+      </div>
+      <p id="empty" class="empty" hidden></p>
+    </main>
+
+    <footer id="footer" class="footer" hidden>
+      <button id="see-all" class="button button--ghost" type="button">Zobacz wszystkie</button>
+    </footer>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+    <div id="tag-editor" class="tag-editor" hidden></div>
+
+    <dialog id="help-dialog" class="dialog">
+      <h2 class="dialog__title">Skróty klawiszowe</h2>
+      <dl class="shortcuts">
+        <dt>↑ ↓</dt><dd>przechodzenie po liście</dd>
+        <dt>Home / End</dt><dd>początek i koniec listy</dd>
+        <dt>Enter</dt><dd>otwórz w czytniku</dd>
+        <dt>o</dt><dd>otwórz oryginał</dd>
+        <dt>a</dt><dd>archiwizuj / przywróć</dd>
+        <dt>f</dt><dd>ulubione</dd>
+        <dt>t</dt><dd>tagi</dd>
+        <dt>Delete</dt><dd>usuń (z cofnięciem przez 5 s)</dd>
+        <dt>1 2 3</dt><dd>zakładki</dd>
+        <dt>/</dt><dd>wyszukiwarka</dd>
+        <dt>Esc</dt><dd>zamknij / wyczyść wyszukiwanie</dd>
+        <dt>?</dt><dd>ta pomoc</dd>
+      </dl>
+      <button id="help-close" class="button" type="button">Zamknij</button>
+    </dialog>
+
+    <script type="module" src="./list.ts"></script>
+  </body>
+</html>

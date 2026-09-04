@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Savely — dane</title>
+    <link rel="stylesheet" href="./options.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1 class="brand">Savely</h1>
+      <button id="open-list" class="button button--ghost" type="button">Lista</button>
+    </header>
+
+    <main class="page">
+      <section class="card">
+        <h2 class="card__title">Twoje dane</h2>
+        <dl id="stats" class="stats"></dl>
+        <p id="storage" class="muted">Sprawdzam zajęte miejsce…</p>
+      </section>
+
+      <section class="card">
+        <h2 class="card__title">Eksport</h2>
+        <p class="muted">
+          Pełna kopia to wszystko: pozycje, treści artykułów, podświetlenia i wersja schematu.
+          Zakładki HTML to sam adres, tytuł i tagi — w formacie, który zaimportuje każda
+          przeglądarka.
+        </p>
+        <div class="row">
+          <button id="export-json" class="button" type="button">Pełna kopia (JSON)</button>
+          <button id="export-html" class="button button--ghost" type="button">
+            Zakładki (HTML)
+          </button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card__title">Import</h2>
+        <p class="muted">
+          Kopia Savely (<code>.json</code>) albo eksport z Pocketa (<code>.csv</code>).
+          Pozycje o tym samym adresie są scalane, nie dublowane — import niczego nie kasuje
+          i nie nadpisuje treści, którą już masz.
+        </p>
+        <label class="file">
+          <span class="file__label">Wybierz plik</span>
+          <input
+            id="import-file"
+            class="file__input"
+            type="file"
+            accept=".json,.csv,application/json,text/csv"
+          />
+        </label>
+        <div id="report" class="report" hidden></div>
+      </section>
+
+      <section class="card">
+        <h2 class="card__title">Synchronizacja między urządzeniami</h2>
+        <p class="muted">
+          Opcjonalna i wyłączona domyślnie. Savely nie ma serwera — dane wędrują przez miejsce,
+          które sam wskazujesz, i tylko tam.
+        </p>
+
+        <div class="row">
+          <label class="field">
+            <span class="field__label">Dostawca</span>
+            <select id="sync-provider" class="field__input"></select>
+          </label>
+        </div>
+
+        <p id="sync-location" class="warn"></p>
+
+        <div id="sync-connect" class="connect">
+          <label class="field">
+            <span id="sync-secret-label" class="field__label"></span>
+            <input id="sync-secret" class="field__input" type="password" autocomplete="off" spellcheck="false" />
+          </label>
+          <p id="sync-help" class="muted"></p>
+          <button id="sync-authorize" class="button" type="button">Połącz</button>
+        </div>
+
+        <div id="sync-connected" class="connect" hidden>
+          <p id="sync-target" class="muted"></p>
+          <p id="sync-status" class="muted"></p>
+          <div class="row">
+            <button id="sync-now" class="button" type="button">Synchronizuj teraz</button>
+            <button id="sync-disconnect" class="button button--ghost" type="button">Rozłącz</button>
+          </div>
+          <label class="settings__check">
+            <input id="sync-auto" type="checkbox" />
+            Synchronizuj automatycznie co 30 minut
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card__title">Kopie automatyczne</h2>
+        <p class="muted">
+          Raz dziennie zapisujemy w bazie metadane pozycji — tagi, ulubione, stan archiwum,
+          daty. Bez treści artykułów, żeby kopie nie puchły. Trzymamy trzy ostatnie.
+        </p>
+        <ul id="snapshots" class="snapshots"></ul>
+        <button id="snapshot-now" class="button button--ghost" type="button">
+          Zrób kopię teraz
+        </button>
+      </section>
+
+      <section class="card card--danger">
+        <h2 class="card__title">Usuń wszystkie dane</h2>
+        <p class="muted">
+          Kasuje pozycje, treści, podświetlenia i kopie automatyczne. Tego nie da się cofnąć —
+          zrób najpierw eksport.
+        </p>
+        <button id="wipe" class="button button--danger" type="button">Usuń wszystkie dane</button>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+
+    <dialog id="confirm-dialog" class="dialog">
+      <h2 id="confirm-title" class="dialog__title">Na pewno?</h2>
+      <p id="confirm-text" class="muted"></p>
+      <div class="row row--end">
+        <button id="confirm-cancel" class="button button--ghost" type="button">Anuluj</button>
+        <button id="confirm-ok" class="button button--danger" type="button">Potwierdzam</button>
+      </div>
+    </dialog>
+
+    <script type="module" src="./options.ts"></script>
+  </body>
+</html>

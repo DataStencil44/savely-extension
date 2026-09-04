@@ -1,0 +1,58 @@
+{
+  "name": "savely-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Savely - lokalne, bezserwerowe rozszerzenie read-it-later (Chrome/Chromium + Firefox desktop i Android)",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:chrome": "cross-env TARGET=chrome vite build --mode development --watch",
+    "dev:firefox": "cross-env TARGET=firefox vite build --mode development --watch",
+    "build": "npm run clean && npm run build:chrome && npm run build:firefox",
+    "build:chrome": "cross-env TARGET=chrome vite build",
+    "build:firefox": "cross-env TARGET=firefox vite build",
+    "clean": "rimraf dist artifacts",
+    "start:firefox": "web-ext run --source-dir dist/firefox",
+    "start:android": "web-ext run --source-dir dist/firefox --target firefox-android",
+    "pack": "npm run pack:chrome && npm run pack:firefox",
+    "pack:chrome": "web-ext build --source-dir dist/chrome --artifacts-dir artifacts --filename chrome.zip --overwrite-dest",
+    "pack:firefox": "web-ext build --source-dir dist/firefox --artifacts-dir artifacts --filename firefox.zip --overwrite-dest",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install --with-deps chromium",
+    "lint": "eslint \"src/**/*.ts\" \"build/**/*.ts\" \"tests/**/*.ts\" \"*.ts\"",
+    "lint:fix": "npm run lint -- --fix",
+    "lint:ext": "web-ext lint --source-dir dist/firefox --self-hosted",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run lint && npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.5.0",
+    "dompurify": "^3.1.7",
+    "flexsearch": "^0.7.43",
+    "idb": "^8.0.0",
+    "webextension-polyfill": "^0.12.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/flexsearch": "^0.7.6",
+    "@types/node": "^22.7.4",
+    "@types/webextension-polyfill": "^0.12.1",
+    "@typescript-eslint/eslint-plugin": "^8.8.0",
+    "@typescript-eslint/parser": "^8.8.0",
+    "cross-env": "^7.0.3",
+    "esbuild": "^0.24.0",
+    "eslint": "^8.57.1",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^29.1.1",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8",
+    "vitest": "^2.1.2",
+    "web-ext": "^10.6.0"
+  }
+}

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Savely</title>
+    <link rel="stylesheet" href="./reader.css" />
+  </head>
+  <body>
+    <div class="progress" aria-hidden="true"><div id="progress-bar" class="progress__bar"></div></div>
+
+    <nav class="bar">
+      <button id="back" class="ghost" type="button">&larr; Lista</button>
+      <div class="bar__group">
+        <button id="favorite" class="ghost" type="button" aria-pressed="false" title="Ulubione (f)" aria-label="Ulubione">&#9734;</button>
+        <button id="archive" class="ghost" type="button" aria-pressed="false" title="Archiwizuj (a)" aria-label="Archiwizuj">&#9636;</button>
+        <a id="original" class="ghost" href="#" target="_blank" rel="noopener noreferrer" title="Otw&oacute;rz orygina&#322; (o)">&#8599;</a>
+        <button id="settings-toggle" class="ghost" type="button" aria-expanded="false" title="Wygl&#261;d">Aa</button>
+      </div>
+    </nav>
+
+    <div id="settings" class="settings" hidden>
+      <div class="settings__row">
+        <span class="settings__label">Rozmiar</span>
+        <div class="settings__group">
+          <button class="ghost" type="button" data-font-size="-1" aria-label="Mniejszy tekst">A&minus;</button>
+          <output id="font-size-value" class="settings__value">18</output>
+          <button class="ghost" type="button" data-font-size="1" aria-label="Wi&#281;kszy tekst">A+</button>
+        </div>
+      </div>
+
+      <div class="settings__row">
+        <span class="settings__label">Kr&oacute;j</span>
+        <div class="settings__group" role="group">
+          <button class="ghost" type="button" data-font-family="serif">Szeryfowy</button>
+          <button class="ghost" type="button" data-font-family="sans">Bezszeryfowy</button>
+          <button class="ghost" type="button" data-font-family="dyslexia">Dysleksja</button>
+        </div>
+      </div>
+
+      <div class="settings__row">
+        <span class="settings__label">Szeroko&#347;&#263;</span>
+        <div class="settings__group">
+          <button class="ghost" type="button" data-column="-6" aria-label="W&#281;&#380;sza kolumna">&#8592;&#8594;</button>
+          <output id="column-value" class="settings__value">68</output>
+          <button class="ghost" type="button" data-column="6" aria-label="Szersza kolumna">&#8594;&#8592;</button>
+        </div>
+      </div>
+
+      <div class="settings__row">
+        <span class="settings__label">Motyw</span>
+        <div class="settings__group" role="group">
+          <button class="ghost" type="button" data-theme-choice="light">Jasny</button>
+          <button class="ghost" type="button" data-theme-choice="sepia">Sepia</button>
+          <button class="ghost" type="button" data-theme-choice="dark">Ciemny</button>
+          <button class="ghost" type="button" data-theme-choice="auto">Auto</button>
+        </div>
+      </div>
+
+      <label class="settings__check">
+        <input id="remote-images" type="checkbox" />
+        Nie &#322;aduj obrazk&oacute;w zdalnych
+      </label>
+    </div>
+
+    <main id="article" class="article"><p class="loading">Wczytuj&#281;&hellip;</p></main>
+
+    <div id="popover" class="popover" hidden></div>
+    <div id="toast" class="toast" role="status" hidden></div>
+
+    <script type="module" src="./reader.ts"></script>
+  </body>
+</html>

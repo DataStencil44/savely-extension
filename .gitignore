@@ -1,0 +1,40 @@
+# zależności
+node_modules/
+
+# artefakty buildu
+dist/
+artifacts/
+web-ext-artifacts/
+*.zip
+*.xpi
+*.crx
+*.pem
+
+# cache narzędzi
+.vite/
+.eslintcache
+coverage/
+*.tsbuildinfo
+
+# e2e (Playwright)
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# lokalne środowisko
+.env
+.env.*
+!.env.example
+
+# system / edytory
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logi
+*.log
+npm-debug.log*
