@@ -233,6 +233,12 @@ body[data-mode='full'] {
   margin-top: 8px;
 }
 
+/* `display` from a class beats the browser's own [hidden] rule - every box
+   that lays itself out has to say so again, or `hidden` only empties it. */
+.chips[hidden] {
+  display: none;
+}
+
 .chip {
   padding: 2px 7px;
   border: 1px solid var(--border);
@@ -396,6 +402,10 @@ body[data-mode='full'] {
   font-size: 13px;
 }
 
+.toast[hidden] {
+  display: none;
+}
+
 .toast__text {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -422,6 +432,10 @@ body[data-mode='full'] {
   border-radius: 10px;
   background: var(--bg);
   box-shadow: var(--shadow);
+}
+
+.tag-editor[hidden] {
+  display: none;
 }
 
 .tag-editor__chips,

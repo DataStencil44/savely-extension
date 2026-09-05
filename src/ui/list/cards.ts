@@ -31,6 +31,11 @@ function button(label: string, glyph: string, onClick: () => void, pressed?: boo
     event.stopPropagation();
     onClick();
   });
+  // Two quick presses on a button are two presses of that button, nothing more:
+  // without this the card's double click opens the reader on top of them.
+  element.addEventListener('dblclick', (event) => {
+    event.stopPropagation();
+  });
   return element;
 }
 
