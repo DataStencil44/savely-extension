@@ -99,6 +99,9 @@ export function createCard(item: SavedItem, index: number, callbacks: CardCallba
   const tagButton = button('Tags (t)', '#', () => {
     callbacks.editTags(item, tagButton);
   });
+  // The tag editor recognizes its own button by this - the cards are rebuilt on
+  // every render, so the element itself is no lasting identity.
+  tagButton.dataset['tagsFor'] = item.id;
   actions.append(
     button('Read (Enter)', '▶', () => {
       callbacks.openReader(item);

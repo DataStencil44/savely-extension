@@ -276,6 +276,38 @@ describe('the full page', () => {
     expect(editor?.hidden).toBe(true);
   });
 
+  it('the tags button still closes the editor after a render replaced it', async () => {
+    const press = (target: HTMLElement): void => {
+      target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    };
+    const tagsButton = (): HTMLButtonElement => {
+      const found = document.querySelector<HTMLButtonElement>(
+        '.card:first-child .card__actions [aria-label^="Tags"]',
+      );
+      if (found === null) throw new Error('no tags button');
+      return found;
+    };
+    const editor = document.querySelector<HTMLElement>('#tag-editor');
+
+    press(tagsButton());
+    await settle(30);
+    expect(editor?.hidden).toBe(false);
+
+    // A tag lands in the database and the list rebuilds its cards - the button
+    // under the cursor is now a different element for the same item.
+    const input = editor?.querySelector<HTMLInputElement>('.tag-editor__input');
+    if (input === undefined || input === null) throw new Error('no tag input');
+    input.value = 'locomotive';
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
+    await settle(50);
+    expect(editor?.hidden).toBe(false);
+
+    press(tagsButton());
+    await settle(30);
+    expect(editor?.hidden).toBe(true);
+  });
+
   it('a deletion shows a toast and can be undone', async () => {
     const first = document.querySelector('.card__title')?.textContent;
 

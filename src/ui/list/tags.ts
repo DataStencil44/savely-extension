@@ -10,6 +10,8 @@ import { normalizeTags } from '@/lib/db';
 export interface TagEditorOptions {
   host: HTMLElement;
   anchor: HTMLElement;
+  /** The item being edited - the identity behind the open/close toggle. */
+  key: string;
   tags: readonly string[];
   /** Every tag in the database - the source of the suggestions. */
   known: readonly string[];
@@ -18,24 +20,24 @@ export interface TagEditorOptions {
 }
 
 let close: (() => void) | undefined;
-/** The button the open panel belongs to - the second press on it closes again. */
-let openAnchor: HTMLElement | undefined;
+/** The item the open panel belongs to - a second press on its button closes. */
+let openKey: string | undefined;
 
 export function closeTagEditor(): void {
   close?.();
 }
 
 export function openTagEditor(options: TagEditorOptions): void {
-  // A second press on the same button toggles the panel shut instead of
+  // A second press on the same card's button toggles the panel shut instead of
   // reopening it - the outside-click handler leaves that press to us.
-  if (close !== undefined && openAnchor === options.anchor) {
+  if (close !== undefined && openKey === options.key) {
     closeTagEditor();
     return;
   }
   closeTagEditor();
 
-  const { host, anchor } = options;
-  openAnchor = anchor;
+  const { host, anchor, key } = options;
+  openKey = key;
   let current = [...options.tags];
 
   const chips = document.createElement('div');
@@ -135,8 +137,12 @@ export function openTagEditor(options: TagEditorOptions): void {
 
   const onOutside = (event: MouseEvent): void => {
     const target = event.target as Node;
-    // The anchor's own press belongs to its click handler, which toggles.
-    if (host.contains(target) || anchor.contains(target)) return;
+    if (host.contains(target)) return;
+    // The press on this item's own tags button belongs to its click handler,
+    // which toggles. Matching on the item rather than on the button element
+    // keeps that true after a render has replaced the button.
+    const button = target instanceof Element ? target.closest('[data-tags-for]') : null;
+    if (button?.getAttribute('data-tags-for') === key) return;
     closeTagEditor();
   };
   // `setTimeout`, because the click that opened the panel is still propagating.
@@ -150,7 +156,7 @@ export function openTagEditor(options: TagEditorOptions): void {
     host.hidden = true;
     host.replaceChildren();
     close = undefined;
-    openAnchor = undefined;
+    openKey = undefined;
     options.closed?.();
   };
 }

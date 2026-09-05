@@ -390,6 +390,7 @@ const callbacks: CardCallbacks = {
     openTagEditor({
       host: el.tagEditor,
       anchor,
+      key: item.id,
       tags: item.tags,
       known: knownTags(),
       apply: (tags) => {
