@@ -18,15 +18,24 @@ export interface TagEditorOptions {
 }
 
 let close: (() => void) | undefined;
+/** The button the open panel belongs to - the second press on it closes again. */
+let openAnchor: HTMLElement | undefined;
 
 export function closeTagEditor(): void {
   close?.();
 }
 
 export function openTagEditor(options: TagEditorOptions): void {
+  // A second press on the same button toggles the panel shut instead of
+  // reopening it - the outside-click handler leaves that press to us.
+  if (close !== undefined && openAnchor === options.anchor) {
+    closeTagEditor();
+    return;
+  }
   closeTagEditor();
 
   const { host, anchor } = options;
+  openAnchor = anchor;
   let current = [...options.tags];
 
   const chips = document.createElement('div');
@@ -125,7 +134,10 @@ export function openTagEditor(options: TagEditorOptions): void {
   input.focus();
 
   const onOutside = (event: MouseEvent): void => {
-    if (!host.contains(event.target as Node)) closeTagEditor();
+    const target = event.target as Node;
+    // The anchor's own press belongs to its click handler, which toggles.
+    if (host.contains(target) || anchor.contains(target)) return;
+    closeTagEditor();
   };
   // `setTimeout`, because the click that opened the panel is still propagating.
   const handle = setTimeout(() => {
@@ -138,6 +150,7 @@ export function openTagEditor(options: TagEditorOptions): void {
     host.hidden = true;
     host.replaceChildren();
     close = undefined;
+    openAnchor = undefined;
     options.closed?.();
   };
 }

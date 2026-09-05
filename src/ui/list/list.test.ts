@@ -254,6 +254,28 @@ describe('the full page', () => {
     expect(document.querySelector<HTMLElement>('#active-tags')?.hidden).toBe(true);
   });
 
+  it('the tags button opens the editor and a second press closes it', async () => {
+    const press = (target: HTMLElement): void => {
+      // A real press is mousedown then click - the panel closes on the first.
+      target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    };
+
+    const tagsButton = document.querySelector<HTMLButtonElement>(
+      '.card:first-child .card__actions [aria-label^="Tags"]',
+    );
+    if (tagsButton === null) throw new Error('no tags button');
+    const editor = document.querySelector<HTMLElement>('#tag-editor');
+
+    press(tagsButton);
+    await settle(30);
+    expect(editor?.hidden).toBe(false);
+
+    press(tagsButton);
+    await settle(30);
+    expect(editor?.hidden).toBe(true);
+  });
+
   it('a deletion shows a toast and can be undone', async () => {
     const first = document.querySelector('.card__title')?.textContent;
 
