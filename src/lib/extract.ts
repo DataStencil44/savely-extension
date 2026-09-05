@@ -7,6 +7,7 @@
  */
 import { Readability } from '@mozilla/readability';
 
+import { findFaviconUrl } from './favicon';
 import { sanitizeArticleHtml } from './sanitize';
 import { estimateReadingMinutes, type ExtractOutcome } from '@/types/article';
 
@@ -89,6 +90,9 @@ export function extractFromDocument(doc: Document, resolvedUrl: string): Extract
     siteName: readSiteName(doc),
     lang: readLang(doc),
     resolvedUrl,
+    // The address only - reading the DOM must stay synchronous and free of
+    // network access; whoever can reach the site fetches the bytes.
+    faviconUrl: findFaviconUrl(doc, resolvedUrl),
   };
 
   let parsed: ReturnType<Readability['parse']> = null;
@@ -132,6 +136,7 @@ export function extractFromDocument(doc: Document, resolvedUrl: string): Extract
       wordCount: clean.wordCount,
       estReadingMinutes: estimateReadingMinutes(clean.wordCount),
       resolvedUrl,
+      faviconUrl: stub.faviconUrl,
     },
   };
 }

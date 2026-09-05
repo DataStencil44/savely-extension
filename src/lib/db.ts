@@ -1,13 +1,15 @@
 /**
  * The storage layer: IndexedDB through `idb`.
  *
- * The `savely` database, five stores:
+ * The `savely` database, six stores:
  *   items      - item metadata (light, loaded into the list)
  *   contents   - sanitized HTML + plain text, kept apart on purpose:
  *                the list must not pull in megabytes of content just to open
  *   highlights - selections inside the content, linked by itemId
  *   snapshots  - automatic backups of METADATA (no content), the last three
  *   tombstones - traces of deleted items, for sync
+ *   favicons   - one site icon per domain, as bytes, so the list draws
+ *                something without going to the network
  *
  * IndexedDB is the single source of truth for data (CLAUDE.md 4.3);
  * `storage.local` is left for small UI settings.
@@ -125,6 +127,19 @@ export interface Tombstone {
   deletedAt: number;
 }
 
+/**
+ * A site icon, keyed by domain (hostname without `www.`) - one row serves every
+ * item saved from that site. The value is a `data:` URL, so the list needs no
+ * network. A cache, not user data: it is rebuilt by the next save, stays out of
+ * exports and out of sync, and losing it costs a picture.
+ */
+export interface SiteIcon {
+  domain: string;
+  /** `data:image/...;base64,...` - written only by `putFavicon`. */
+  dataUrl: string;
+  updatedAt: number;
+}
+
 export interface SavelyDB extends DBSchema {
   items: {
     key: string;
@@ -154,6 +169,10 @@ export interface SavelyDB extends DBSchema {
   tombstones: {
     key: string;
     value: Tombstone;
+  };
+  favicons: {
+    key: string;
+    value: SiteIcon;
   };
 }
 
@@ -209,7 +228,7 @@ export function normalizeTags(tags: readonly string[]): string[] {
 // ---------------------------------------------------------------------------
 
 export const DB_NAME = 'savely';
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 
 type UpgradeTransaction = IDBPTransaction<SavelyDB, StoreNames<SavelyDB>[], 'versionchange'>;
 
@@ -297,6 +316,14 @@ const migrateToV4: Migration = async (db, tx) => {
 };
 
 /**
+ * Version 5: the store for site icons. A new store only - the icons themselves
+ * arrive with the next save of a page from a given site.
+ */
+const migrateToV5: Migration = (db) => {
+  db.createObjectStore('favicons', { keyPath: 'domain' });
+};
+
+/**
  * An explicit switch over versions - the single place migrations are added to.
  * Every new version is a new `case` that receives the database after the
  * previous steps (see the loop in `runMigrations`), so migrations are
@@ -312,6 +339,8 @@ function migrationFor(version: number): Migration | undefined {
       return migrateToV3;
     case 4:
       return migrateToV4;
+    case 5:
+      return migrateToV5;
     default:
       return undefined;
   }
@@ -854,6 +883,39 @@ export async function getContents(itemIds: readonly string[]): Promise<ItemConte
   }
   await tx.done;
   return found;
+}
+
+// ---------------------------------------------------------------------------
+// favicons
+// ---------------------------------------------------------------------------
+
+/**
+ * Stores the icon for a domain, overwriting whatever was there. A site that
+ * changes its icon gets the new one at the next save from it - no expiry
+ * timer, because nothing here is worth waking the extension up for.
+ */
+export async function putFavicon(domain: string, dataUrl: string): Promise<void> {
+  const db = await openDb();
+  await db.put('favicons', { domain, dataUrl, updatedAt: Date.now() });
+}
+
+export async function getFavicon(domain: string): Promise<string | undefined> {
+  const db = await openDb();
+  const icon = await db.get('favicons', domain);
+  return icon?.dataUrl;
+}
+
+/**
+ * Every icon at once, ready for the list to look up by domain.
+ *
+ * One row per site rather than per item, so this stays in the tens of rows and
+ * a few dozen kilobytes even for a database of thousands of articles - cheap
+ * enough to read once when the popup opens.
+ */
+export async function listFavicons(): Promise<Map<string, string>> {
+  const db = await openDb();
+  const icons = await db.getAll('favicons');
+  return new Map(icons.map((icon) => [icon.domain, icon.dataUrl]));
 }
 
 // ---------------------------------------------------------------------------

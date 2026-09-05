@@ -48,6 +48,9 @@ export function createCard(item: SavedItem, index: number, callbacks: CardCallba
   card.setAttribute('aria-selected', 'false');
   card.tabIndex = -1;
 
+  // The site icon, filled in by the list from the `favicons` store - the card
+  // itself knows nothing about where icons come from. Decorative: the domain is
+  // written out right below it, so a screen reader gains nothing from the image.
   const thumb = document.createElement('img');
   thumb.className = 'card__thumb';
   thumb.alt = '';
@@ -147,8 +150,3 @@ export function createCard(item: SavedItem, index: number, callbacks: CardCallba
   return card;
 }
 
-/** The first image in the stored content - the source of the thumbnail. */
-export function findLeadImage(html: string): string | null {
-  const match = /<img\b[^>]*\bsrc="(https?:\/\/[^"]+)"/i.exec(html);
-  return match?.[1] ?? null;
-}

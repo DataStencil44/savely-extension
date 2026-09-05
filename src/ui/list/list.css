@@ -306,12 +306,17 @@ body[data-mode='full'] {
   background: var(--bg-hover);
 }
 
+/* The site icon sits in a tile of the size the lead-image thumbnail used to
+   have, so the row height contract above is untouched. `contain` plus padding:
+   a favicon is 16-32 px and stretching it over the whole tile turns it to mush. */
 .card__thumb {
   flex: 0 0 auto;
+  box-sizing: border-box;
   width: 60px;
   height: 60px;
+  padding: 16px;
   border-radius: 8px;
-  object-fit: cover;
+  object-fit: contain;
   background: var(--bg-elevated);
 }
 
@@ -521,6 +526,7 @@ body[data-mode='full'] {
   .card__thumb {
     width: 48px;
     height: 48px;
+    padding: 12px;
   }
 
   .card__actions .icon {

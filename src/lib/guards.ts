@@ -68,7 +68,8 @@ function isArticle(value: unknown): value is ExtractedArticle {
     isString(value['text']) &&
     isNumber(value['wordCount']) &&
     isNumber(value['estReadingMinutes']) &&
-    isString(value['resolvedUrl'])
+    isString(value['resolvedUrl']) &&
+    isNullableString(value['faviconUrl'])
   );
 }
 
@@ -79,7 +80,8 @@ function isStub(value: unknown): value is ArticleStub {
     isString(value['excerpt']) &&
     isNullableString(value['siteName']) &&
     isNullableString(value['lang']) &&
-    isString(value['resolvedUrl'])
+    isString(value['resolvedUrl']) &&
+    isNullableString(value['faviconUrl'])
   );
 }
 
@@ -98,7 +100,13 @@ export function isExtractOutcome(value: unknown): value is ExtractOutcome {
 }
 
 export function isOutcomeResponse(value: unknown): value is OutcomeResponse {
-  return isRecord(value) && value['type'] === 'savely:outcome' && isExtractOutcome(value['outcome']);
+  return (
+    isRecord(value) &&
+    value['type'] === 'savely:outcome' &&
+    isExtractOutcome(value['outcome']) &&
+    // The icon is optional: the offscreen document answers without one.
+    (value['favicon'] === undefined || isNullableString(value['favicon']))
+  );
 }
 
 export function isSaveResultMessage(value: unknown): value is SaveResultMessage {

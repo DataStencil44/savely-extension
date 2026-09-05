@@ -474,7 +474,7 @@ describe('migrations', () => {
     expect(highlight).toMatchObject({ text: 'a quote', note: 'a note', start: 0, end: 0, prefix: '' });
   });
 
-  /** A synthetic version 5: we add a field to every item, deleting nothing. */
+  /** A synthetic version 6: we add a field to every item, deleting nothing. */
   const addFlag: Migration = async (_db, tx) => {
     const store = tx.objectStore('items');
     let cursor = await store.openCursor();
@@ -485,7 +485,7 @@ describe('migrations', () => {
     }
   };
 
-  it('raising the version 4 -> 5 adds a field and deletes no data', async () => {
+  it('raising the version 5 -> 6 adds a field and deletes no data', async () => {
     const first = await saveItem({
       url: 'https://example.com/a',
       title: 'First',
@@ -503,12 +503,13 @@ describe('migrations', () => {
 
     await closeDb();
 
-    const db = await openDb({ version: 5, migrations: { 5: addFlag } });
+    const db = await openDb({ version: 6, migrations: { 6: addFlag } });
 
     try {
-      expect(db.version).toBe(5);
+      expect(db.version).toBe(6);
       expect([...db.objectStoreNames].sort()).toEqual([
         'contents',
+        'favicons',
         'highlights',
         'items',
         'snapshots',
@@ -550,7 +551,7 @@ describe('migrations', () => {
     await saveItem({ url: 'https://example.com/a', title: 'Stays' });
     await closeDb();
 
-    await expect(openDb({ version: 5, migrations: {} })).rejects.toThrow();
+    await expect(openDb({ version: 6, migrations: {} })).rejects.toThrow();
 
     // The data is still in place.
     await expect(countItems()).resolves.toBe(1);

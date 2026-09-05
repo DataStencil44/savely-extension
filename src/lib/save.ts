@@ -13,7 +13,8 @@
  */
 import browser from 'webextension-polyfill';
 
-import { saveItem, setContent } from './db';
+import { saveItem, setContent, putFavicon } from './db';
+import { captureFavicon, faviconKey, faviconUrlOf } from './favicon';
 import { isOutcomeResponse } from './guards';
 import { extractHtmlOutOfBand } from './offscreen';
 import { checkPageUrl } from './page-url';
@@ -44,12 +45,34 @@ async function sha256Hex(text: string): Promise<string> {
 }
 
 /**
+ * The site icon, stored under the domain of the page we just saved.
+ *
+ * Never part of the awaited sequence that matters: the item is already in the
+ * database by the time this runs, and a domain with no icon simply shows none.
+ */
+async function storeFavicon(pageUrl: string, dataUrl: string | null): Promise<void> {
+  if (dataUrl === null) return;
+  const domain = faviconKey(pageUrl);
+  if (domain === null) return;
+  try {
+    await putFavicon(domain, dataUrl);
+  } catch {
+    // A picture is not worth reporting a failed save over.
+  }
+}
+
+/**
  * The shared tail of both paths: extraction result -> database.
  *
  * `requestUrl` is the address the user was saving; the `resolvedUrl` from the
  * result may differ (a redirect) and it is the one deduplication goes by.
+ * `favicon` is the icon bytes when the caller could fetch them.
  */
-async function persist(outcome: ExtractOutcome, requestUrl: string): Promise<SaveResult> {
+async function persist(
+  outcome: ExtractOutcome,
+  requestUrl: string,
+  favicon: string | null,
+): Promise<SaveResult> {
   if (outcome.kind === 'refused') {
     return fail(outcome.message);
   }
@@ -65,6 +88,8 @@ async function persist(outcome: ExtractOutcome, requestUrl: string): Promise<Sav
       lang: stub.lang,
       status: 'failed',
     });
+
+    await storeFavicon(stub.resolvedUrl, favicon);
 
     return {
       ok: true,
@@ -98,6 +123,8 @@ async function persist(outcome: ExtractOutcome, requestUrl: string): Promise<Sav
     contentHash: await sha256Hex(article.text),
   });
 
+  await storeFavicon(article.resolvedUrl, favicon);
+
   return {
     ok: true,
     degraded: false,
@@ -112,6 +139,8 @@ export async function savePageInTab(tabId: number, url: string): Promise<SaveRes
   if (problem !== null) return fail(problem);
 
   let outcome: ExtractOutcome;
+  // The tab fetches its own icon - see the note in the content script.
+  let favicon: string | null = null;
   try {
     await browser.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
     const response: unknown = await browser.tabs.sendMessage(tabId, { type: EXTRACT_REQUEST });
@@ -119,13 +148,14 @@ export async function savePageInTab(tabId: number, url: string): Promise<SaveRes
       return fail('The tab answered with something I do not understand - try refreshing the page.');
     }
     outcome = response.outcome;
+    favicon = response.favicon ?? null;
   } catch (error) {
     return fail(
       `I cannot read this tab (${errorMessage(error)}). Browser-internal pages, the add-on store and PDFs are out of reach.`,
     );
   }
 
-  return persist(outcome, url);
+  return persist(outcome, url, favicon);
 }
 
 /**
@@ -169,7 +199,10 @@ export async function saveLinkInBackground(url: string): Promise<SaveResult> {
 
   try {
     const outcome = await extractHtmlOutOfBand(html, response.url === '' ? url : response.url);
-    return await persist(outcome, url);
+    // Here the icon is fetched by us: the host permission for this address was
+    // granted a moment ago, and the offscreen document does no network at all.
+    const favicon = await captureFavicon(faviconUrlOf(outcome));
+    return await persist(outcome, url, favicon);
   } catch (error) {
     return fail(`Could not process the page (${errorMessage(error)}).`);
   }

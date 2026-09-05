@@ -6,8 +6,7 @@
  *
  * Every item (without content) is loaded into memory once and filtered there -
  * metadata for 5000 articles is a few megabytes, which makes switching a tab
- * or a tag instant. Content is read on demand only: for the search index and
- * for thumbnails.
+ * or a tag instant. Content is read on demand only, for the search index.
  */
 import browser from 'webextension-polyfill';
 
@@ -15,15 +14,17 @@ import {
   deleteItem,
   getContents,
   listContentIds,
+  listFavicons,
   listItems,
   updateItem,
   type SavedItem,
 } from '@/lib/db';
+import { faviconKey } from '@/lib/favicon';
 import { isSaveResultMessage } from '@/lib/guards';
 import { SearchIndex } from '@/lib/search';
 import { SAVE_ACTIVE_TAB } from '@/types/messages';
 
-import { createCard, findLeadImage, type CardCallbacks } from './cards';
+import { createCard, type CardCallbacks } from './cards';
 import { closeTagEditor, openTagEditor } from './tags';
 import { flushToast, showToast } from './toast';
 import { computeWindow, scrollTopFor } from './window';
@@ -69,7 +70,8 @@ function readRowHeight(): number {
 let rowHeight = 104;
 
 const index = new SearchIndex();
-const thumbnails = new Map<string, string | null>();
+/** domain -> `data:` URL, read once at startup; see `loadFavicons`. */
+let favicons = new Map<string, string>();
 
 const el = {
   app: document.body,
@@ -128,9 +130,6 @@ async function indexContents(): Promise<void> {
     const batch = await getContents(ids.slice(offset, offset + INDEX_BATCH));
     for (const content of batch) {
       index.setText(content.itemId, content.text);
-      if (!thumbnails.has(content.itemId)) {
-        thumbnails.set(content.itemId, findLeadImage(content.html));
-      }
     }
     // Yield to the browser so the list stays responsive.
     await new Promise((resolve) => {
@@ -259,13 +258,12 @@ function render(force = false): void {
     if (item === undefined) continue;
     const card = createCard(item, position, callbacks);
     if (position === state.selected) card.setAttribute('aria-selected', 'true');
-    applyThumbnail(card, item.id);
+    applyFavicon(card, item);
     cards.push(card);
   }
 
   rows.replaceChildren(...cards);
   rows.style.transform = `translateY(${String(range.offsetY)}px)`;
-  scheduleThumbnails();
 }
 
 function emptyMessage(): string {
@@ -282,69 +280,30 @@ function emptyMessage(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Thumbnails
+// Site icons
 // ---------------------------------------------------------------------------
 
-function applyThumbnail(card: HTMLLIElement, itemId: string): void {
-  const source = thumbnails.get(itemId);
-  if (source === undefined || source === null) return;
+/**
+ * All the icons in one read, before the first render.
+ *
+ * There is one row per domain rather than per item, so this is tens of rows
+ * even for a database of thousands of articles - cheaper than the card-by-card
+ * reads the lead-image thumbnail used to need, and it lands before the cards
+ * are drawn, so nothing shifts a moment later.
+ */
+async function loadFavicons(): Promise<void> {
+  favicons = await listFavicons();
+}
+
+function applyFavicon(card: HTMLLIElement, item: SavedItem): void {
+  const domain = faviconKey(item.url);
+  const dataUrl = domain === null ? undefined : favicons.get(domain);
+  if (dataUrl === undefined) return;
+
   const image = card.querySelector<HTMLImageElement>('.card__thumb');
   if (image === null) return;
-  image.src = source;
+  image.src = dataUrl;
   image.hidden = false;
-}
-
-let thumbnailTimer: number | undefined;
-
-/**
- * Thumbnails are pulled out of the stored content only for cards someone can
- * actually see - and only once per item. The database schema has no separate
- * field for the image, so the alternative would be a migration; with a dozen
- * or so visible cards, one IndexedDB read per card is cheaper.
- */
-function scheduleThumbnails(): void {
-  if (thumbnailTimer !== undefined) clearTimeout(thumbnailTimer);
-  thumbnailTimer = setTimeout(() => {
-    void loadVisibleThumbnails();
-  }, 120) as unknown as number;
-}
-
-/**
- * One read for the whole visible window, one pass of the DOM. Reading card by
- * card and revealing each thumbnail as its content arrived made the cards jump
- * one after another for a second or two after the popup opened - a thumbnail
- * appearing pushes the card's text aside, and there was one such shift per
- * item. Now every visible card gets its image in the same frame.
- */
-async function loadVisibleThumbnails(): Promise<void> {
-  const rows = el.rows;
-  if (rows === null) return;
-
-  const cards = [...rows.children].filter(
-    (card): card is HTMLLIElement => card instanceof HTMLLIElement,
-  );
-  const missing = [
-    ...new Set(
-      cards
-        .map((card) => card.dataset['id'])
-        .filter((id): id is string => id !== undefined && !thumbnails.has(id)),
-    ),
-  ];
-  if (missing.length === 0) return;
-
-  const contents = await getContents(missing);
-  const html = new Map(contents.map((content) => [content.itemId, content.html]));
-  for (const id of missing) {
-    const source = html.get(id);
-    // No content (or no image in it) is cached as `null` - the point is not to
-    // read the same item again on every scroll.
-    thumbnails.set(id, source === undefined ? null : findLeadImage(source));
-  }
-
-  for (const card of cards) {
-    const id = card.dataset['id'];
-    if (id !== undefined) applyThumbnail(card, id);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -598,7 +557,8 @@ async function saveCurrentPage(): Promise<void> {
     }
     showStatus(response.message, response.ok && !response.degraded ? 'ok' : 'error');
     if (response.ok) {
-      await loadItems();
+      // A save from a new site also brings a new icon.
+      await Promise.all([loadItems(), loadFavicons()]);
       indexMetadata();
       recompute();
     }
@@ -690,7 +650,7 @@ function wireEvents(): void {
 async function main(): Promise<void> {
   wireEvents();
 
-  await loadItems();
+  await Promise.all([loadItems(), loadFavicons()]);
   indexMetadata();
   recompute();
 

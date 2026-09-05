@@ -137,6 +137,9 @@ describe('extractFromHtml', () => {
     expect(article.siteName).toBe('The Example Daily');
     expect(article.lang).toBe('en');
     expect(article.resolvedUrl).toBe(BASE);
+    // The address of the icon travels with the result; the bytes are fetched by
+    // whoever can reach the site (see `lib/favicon.ts`).
+    expect(article.faviconUrl).toBe('https://daily.example/favicon.ico');
 
     // the content went through sanitization
     expect(article.html).not.toContain('<script');
@@ -168,6 +171,7 @@ describe('extractFromHtml', () => {
     expect(outcome.stub.excerpt).toBe('Sign in to see your data.');
     expect(outcome.stub.lang).toBe('en');
     expect(outcome.stub.resolvedUrl).toBe('https://dashboard.example/');
+    expect(outcome.stub.faviconUrl).toBe('https://dashboard.example/favicon.ico');
   });
 
   it('refuses an empty document', () => {

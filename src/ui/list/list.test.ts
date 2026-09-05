@@ -12,9 +12,13 @@ import 'fake-indexeddb/auto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import html from './list.html?raw';
-import { deleteDb, getItem, saveItem, setContent } from '@/lib/db';
+import { deleteDb, getItem, putFavicon, saveItem, setContent } from '@/lib/db';
 
 const ITEMS = 300;
+
+/** Stored for one of the seven domains, so the cards of the others stay bare. */
+const ICON = 'data:image/png;base64,AAAA';
+const ICON_DOMAIN = 'site-5.example';
 
 /** The addresses passed to `tabs.create` - this is how we know what opened in a new tab. */
 const openedTabs: string[] = [];
@@ -106,6 +110,8 @@ beforeAll(async () => {
       });
     }
   }
+
+  await putFavicon(ICON_DOMAIN, ICON);
 });
 
 afterAll(async () => {
@@ -137,6 +143,23 @@ describe('the full page', () => {
 
   it('every card carries the full set of actions', () => {
     expect(document.querySelectorAll('.card:first-child .card__actions .icon')).toHaveLength(6);
+  });
+
+  it('a card shows the icon of its site, and only of its own site', () => {
+    const iconOf = (card: Element | undefined): HTMLImageElement | null =>
+      card?.querySelector<HTMLImageElement>('.card__thumb') ?? null;
+    const domainOf = (card: Element): string =>
+      card.querySelector('.card__meta')?.textContent?.split(' · ')[0] ?? '';
+
+    const withIcon = [...cards()].find((card) => domainOf(card) === ICON_DOMAIN);
+    expect(iconOf(withIcon)?.hidden).toBe(false);
+    expect(iconOf(withIcon)?.getAttribute('src')).toBe(ICON);
+
+    // Another domain has no icon stored - the tile stays empty rather than
+    // borrowing the neighbour's.
+    const without = [...cards()].find((card) => domainOf(card) !== ICON_DOMAIN);
+    expect(iconOf(without)?.hidden).toBe(true);
+    expect(iconOf(without)?.getAttribute('src')).toBeNull();
   });
 
   it('the reader opens in a new tab and does not mark the item as read', async () => {

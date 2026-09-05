@@ -33,6 +33,13 @@ export type SavelyRequest = ExtractRequestMessage | ParseRequestMessage | SaveAc
 export interface OutcomeResponse {
   type: 'savely:outcome';
   outcome: ExtractOutcome;
+  /**
+   * The site icon as a `data:` URL, when the answering context could fetch it.
+   * The content script can (the icon is the page's own origin), the offscreen
+   * document has no business on the network - it leaves this out and the
+   * background fetches under the host permission it already asked for.
+   */
+  favicon?: string | null;
 }
 
 /** The background's answer to `SAVE_ACTIVE_TAB` - ready to show in the popup. */
