@@ -142,7 +142,9 @@ describe('the full page', () => {
   it('the reader opens in a new tab and does not mark the item as read', async () => {
     openedTabs.length = 0;
 
-    document.querySelector<HTMLButtonElement>('.card:first-child .card__actions .icon')?.click();
+    document
+      .querySelector<HTMLButtonElement>('.card:first-child .card__actions [aria-label^="Read"]')
+      ?.click();
     await settle(30);
 
     const opened = openedTabs.at(-1) ?? '';

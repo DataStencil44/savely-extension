@@ -108,11 +108,11 @@ export function createCard(item: SavedItem, index: number, callbacks: CardCallba
   // every render, so the element itself is no lasting identity.
   tagButton.dataset['tagsFor'] = item.id;
   actions.append(
-    button('Read (Enter)', '▶', () => {
-      callbacks.openReader(item);
-    }),
     button('Open original (o)', '↗', () => {
       callbacks.openOriginal(item);
+    }),
+    button('Read (Enter)', '▶', () => {
+      callbacks.openReader(item);
     }),
     button(
       item.favorite ? 'Remove from favorites (f)' : 'Add to favorites (f)',
