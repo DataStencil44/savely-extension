@@ -13,7 +13,6 @@ import browser from 'webextension-polyfill';
 
 import {
   deleteItem,
-  getContent,
   getContents,
   listContentIds,
   listItems,
@@ -310,18 +309,41 @@ function scheduleThumbnails(): void {
   }, 120) as unknown as number;
 }
 
+/**
+ * One read for the whole visible window, one pass of the DOM. Reading card by
+ * card and revealing each thumbnail as its content arrived made the cards jump
+ * one after another for a second or two after the popup opened - a thumbnail
+ * appearing pushes the card's text aside, and there was one such shift per
+ * item. Now every visible card gets its image in the same frame.
+ */
 async function loadVisibleThumbnails(): Promise<void> {
   const rows = el.rows;
   if (rows === null) return;
 
-  for (const card of [...rows.children]) {
-    if (!(card instanceof HTMLLIElement)) continue;
-    const id = card.dataset['id'];
-    if (id === undefined || thumbnails.has(id)) continue;
+  const cards = [...rows.children].filter(
+    (card): card is HTMLLIElement => card instanceof HTMLLIElement,
+  );
+  const missing = [
+    ...new Set(
+      cards
+        .map((card) => card.dataset['id'])
+        .filter((id): id is string => id !== undefined && !thumbnails.has(id)),
+    ),
+  ];
+  if (missing.length === 0) return;
 
-    const content = await getContent(id);
-    thumbnails.set(id, content === undefined ? null : findLeadImage(content.html));
-    applyThumbnail(card, id);
+  const contents = await getContents(missing);
+  const html = new Map(contents.map((content) => [content.itemId, content.html]));
+  for (const id of missing) {
+    const source = html.get(id);
+    // No content (or no image in it) is cached as `null` - the point is not to
+    // read the same item again on every scroll.
+    thumbnails.set(id, source === undefined ? null : findLeadImage(source));
+  }
+
+  for (const card of cards) {
+    const id = card.dataset['id'];
+    if (id !== undefined) applyThumbnail(card, id);
   }
 }
 

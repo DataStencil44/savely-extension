@@ -1,8 +1,8 @@
 /*
- * One stylesheet for two modes: the popup (`data-mode="popup"`) and the full
- * page. The popup is capped at 600 px with a fixed width; the full page expands
- * to 860 px. Everything has to stay usable at 360 px - that is what Firefox for
- * Android gives us.
+ * One stylesheet for two modes: the popup (the default, so that it needs no
+ * JavaScript to get its size) and the full page (`data-mode="full"`). The popup
+ * is 380 x 600 px; the full page expands to 860 px. Everything has to stay
+ * usable at 360 px - that is what Firefox for Android gives us.
  */
 :root {
   --bg: #ffffff;
@@ -47,20 +47,34 @@ body {
   background: var(--bg);
   color: var(--text);
   font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-}
 
-body[data-mode='popup'] {
+  /* The popup's box is the default, not something `data-mode` switches on:
+     the JS sets that attribute only once the module has loaded, and until
+     then an unsized body makes the browser open the popup at the content's
+     size and then resize it - a visible jump on every open. The full page
+     (`?full=1`) overrides all of it below.
+
+     The size is in `px` and `%`, never `vw`: in a popup the viewport *is* the
+     window, so a viewport-relative size feeds the window's own auto-sizing
+     back into itself and the window oscillates. */
   width: 380px;
-  max-width: 100vw;
+  max-width: 100%;
   height: 600px;
   max-height: 600px;
+
+  /* The list scrolls, not the document. Propagates to the viewport (the
+     `html` element has no overflow of its own), so no document scrollbar can
+     appear, shrink the viewport and trigger another resize. */
+  overflow: hidden;
 }
 
 body[data-mode='full'] {
   /* The list scrolls, not the page - the virtualization measures the
      container's `scrollTop` and `clientHeight`, so it must be the scroller. */
+  width: auto;
   height: 100vh;
   max-width: 860px;
+  max-height: none;
   margin: 0 auto;
   padding: 0 16px;
 }
@@ -475,10 +489,6 @@ body[data-mode='full'] {
        this value and recomputes the virtualization - see `readRowHeight` in
        list.ts. */
     --row-h: 128px;
-  }
-
-  body[data-mode='popup'] {
-    width: 100vw;
   }
 
   .brand {
