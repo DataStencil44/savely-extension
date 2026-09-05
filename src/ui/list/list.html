@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pl">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -11,11 +11,11 @@
       <div class="topbar__row">
         <h1 class="brand">Savely</h1>
         <div class="topbar__actions">
-          <button id="save" class="button" type="button">Zapisz tę stronę</button>
-          <button id="help" class="icon" type="button" title="Skróty klawiszowe (?)" aria-label="Skróty klawiszowe">
+          <button id="save" class="button" type="button">Save this page</button>
+          <button id="help" class="icon" type="button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">
             ?
           </button>
-          <button id="options" class="icon" type="button" title="Dane: eksport, import, kopie" aria-label="Dane i kopie">
+          <button id="options" class="icon" type="button" title="Data: export, import, backups" aria-label="Data and backups">
             ⚙
           </button>
         </div>
@@ -27,21 +27,21 @@
         id="search"
         class="search"
         type="search"
-        placeholder="Szukaj w zapisanych… (/)"
+        placeholder="Search saved items… (/)"
         autocomplete="off"
         spellcheck="false"
-        aria-label="Szukaj w zapisanych"
+        aria-label="Search saved items"
       />
 
-      <nav class="tabs" role="tablist" aria-label="Widoki listy">
+      <nav class="tabs" role="tablist" aria-label="List views">
         <button class="tab" type="button" role="tab" data-tab="inbox" aria-selected="true">
-          Do przeczytania <span class="tab__count">0</span>
+          To read <span class="tab__count">0</span>
         </button>
         <button class="tab" type="button" role="tab" data-tab="favorite" aria-selected="false">
-          Ulubione <span class="tab__count">0</span>
+          Favorites <span class="tab__count">0</span>
         </button>
         <button class="tab" type="button" role="tab" data-tab="archive" aria-selected="false">
-          Archiwum <span class="tab__count">0</span>
+          Archive <span class="tab__count">0</span>
         </button>
       </nav>
 
@@ -51,36 +51,36 @@
     <main class="main">
       <div id="scroller" class="scroller">
         <div id="sizer" class="sizer">
-          <ul id="rows" class="rows" role="listbox" aria-label="Zapisane pozycje"></ul>
+          <ul id="rows" class="rows" role="listbox" aria-label="Saved items"></ul>
         </div>
       </div>
       <p id="empty" class="empty" hidden></p>
     </main>
 
     <footer id="footer" class="footer" hidden>
-      <button id="see-all" class="button button--ghost" type="button">Zobacz wszystkie</button>
+      <button id="see-all" class="button button--ghost" type="button">See all</button>
     </footer>
 
     <div id="toast" class="toast" role="status" hidden></div>
     <div id="tag-editor" class="tag-editor" hidden></div>
 
     <dialog id="help-dialog" class="dialog">
-      <h2 class="dialog__title">Skróty klawiszowe</h2>
+      <h2 class="dialog__title">Keyboard shortcuts</h2>
       <dl class="shortcuts">
-        <dt>↑ ↓</dt><dd>przechodzenie po liście</dd>
-        <dt>Home / End</dt><dd>początek i koniec listy</dd>
-        <dt>Enter</dt><dd>otwórz w czytniku</dd>
-        <dt>o</dt><dd>otwórz oryginał</dd>
-        <dt>a</dt><dd>archiwizuj / przywróć</dd>
-        <dt>f</dt><dd>ulubione</dd>
-        <dt>t</dt><dd>tagi</dd>
-        <dt>Delete</dt><dd>usuń (z cofnięciem przez 5 s)</dd>
-        <dt>1 2 3</dt><dd>zakładki</dd>
-        <dt>/</dt><dd>wyszukiwarka</dd>
-        <dt>Esc</dt><dd>zamknij / wyczyść wyszukiwanie</dd>
-        <dt>?</dt><dd>ta pomoc</dd>
+        <dt>↑ ↓</dt><dd>move through the list</dd>
+        <dt>Home / End</dt><dd>start and end of the list</dd>
+        <dt>Enter</dt><dd>open in reader</dd>
+        <dt>o</dt><dd>open original</dd>
+        <dt>a</dt><dd>archive / restore</dd>
+        <dt>f</dt><dd>favorite</dd>
+        <dt>t</dt><dd>tags</dd>
+        <dt>Delete</dt><dd>delete (undo available for 5 s)</dd>
+        <dt>1 2 3</dt><dd>tabs</dd>
+        <dt>/</dt><dd>search</dd>
+        <dt>Esc</dt><dd>close / clear search</dd>
+        <dt>?</dt><dd>this help</dd>
       </dl>
-      <button id="help-close" class="button" type="button">Zamknij</button>
+      <button id="help-close" class="button" type="button">Close</button>
     </dialog>
 
     <script type="module" src="./list.ts"></script>

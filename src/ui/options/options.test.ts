@@ -1,18 +1,18 @@
 // @vitest-environment jsdom
 /**
- * Test strony opcji na jsdom: montujemy prawdziwy `options.html`, uruchamiamy
- * `options.ts` i klikamy jak użytkownik.
+ * An options-page test on jsdom: we mount the real `options.html`, run
+ * `options.ts` and click the way a user would.
  *
- * Sprawdzamy to, czego nie widać w testach jednostkowych: że eksport pobiera
- * plik o właściwej nazwie, że import uszkodzonego pliku nie rusza bazy i mówi
- * dlaczego, a kasowanie danych wymaga potwierdzenia.
+ * What we check is what the unit tests cannot see: that an export downloads a
+ * file with the right name, that importing a damaged file leaves the database
+ * alone and says why, and that wiping the data requires confirmation.
  */
 import 'fake-indexeddb/auto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import html from './options.html?raw';
 
-/** Pliki oddane do `downloads.download` - stąd wiemy, co poszło na dysk. */
+/** The files handed to `downloads.download` - this is how we know what hit the disk. */
 const downloads = vi.hoisted(() => {
   const captured: { filename: string; url: string }[] = [];
   const noop = (): void => undefined;
@@ -26,7 +26,7 @@ const downloads = vi.hoisted(() => {
         lastError: null,
       },
       tabs: { create: noop },
-      // Sekcja synchronizacji pyta providera o stan połączenia i o alarmy.
+      // The sync section asks the provider about the connection state and the alarms.
       storage: {
         local: {
           get: (_keys: unknown, callback: (items: Record<string, unknown>) => void) => {
@@ -82,12 +82,12 @@ function text(selector: string): string {
   return document.querySelector<HTMLElement>(selector)?.textContent ?? '';
 }
 
-/** Podaje plik tak, jak zrobiłby to `<input type="file">` po wyborze. */
+/** Hands over a file the way `<input type="file">` would after a selection. */
 async function importFile(name: string, content: string): Promise<void> {
   const input = document.querySelector<HTMLInputElement>('#import-file');
-  if (input === null) throw new Error('brak pola pliku');
+  if (input === null) throw new Error('no file input');
 
-  // jsdom nie pozwala zbudować FileList - podstawiamy samą tablicę.
+  // jsdom does not allow building a FileList - we substitute a plain array.
   Object.defineProperty(input, 'files', {
     configurable: true,
     value: [new File([content], name, { type: 'text/plain' })],
@@ -99,7 +99,7 @@ async function importFile(name: string, content: string): Promise<void> {
 beforeAll(async () => {
   await deleteDb();
 
-  // jsdom nie implementuje ani <dialog>, ani obiektów Blob URL.
+  // jsdom implements neither <dialog> nor Blob URLs.
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
     configurable: true,
     value(this: HTMLDialogElement) {
@@ -120,9 +120,9 @@ beforeAll(async () => {
     value: { estimate: () => Promise.resolve({ usage: 5 * 1024 * 1024, quota: 1024 * 1024 * 1024 }) },
   });
 
-  const item = await saveItem({ url: 'https://a.example/1', title: 'Pierwszy', wordCount: 400 });
+  const item = await saveItem({ url: 'https://a.example/1', title: 'First', wordCount: 400 });
   await setContent(item.id, { html: '<p>a</p>', text: 'a' });
-  await saveItem({ url: 'https://b.example/2', title: 'Drugi' });
+  await saveItem({ url: 'https://b.example/2', title: 'Second' });
 
   const parsed = new DOMParser().parseFromString(html, 'text/html');
   for (const script of parsed.querySelectorAll('script')) script.remove();
@@ -132,26 +132,26 @@ beforeAll(async () => {
   await settle(120);
 });
 
-describe('strona opcji', () => {
-  it('pokazuje liczniki i zajęte miejsce', () => {
+describe('the options page', () => {
+  it('shows the counters and the storage usage', () => {
     const values = [...document.querySelectorAll('.stat__value')].map((node) => node.textContent);
-    // pozycje, do przeczytania, archiwum, ulubione, z treścią, podświetlenia
+    // items, to read, archived, favorites, with content, highlights
     expect(values).toEqual(['2', '2', '0', '0', '1', '0']);
-    expect(text('#storage')).toBe('Zajęte miejsce: 5,0 MB z 1,0 GB (0,5%).');
+    expect(text('#storage')).toBe('Storage used: 5.0 MB of 1.0 GB (0.5%).');
   });
 
-  it('sekcja synchronizacji mówi wprost, gdzie trafią dane, zanim poprosi o token', () => {
+  it('the sync section says where the data goes before asking for a token', () => {
     const location = text('#sync-location');
-    expect(location).toContain('prywatnego Gista');
-    expect(location).toContain('nie jest też zaszyfrowany');
+    expect(location).toContain('private Gist');
+    expect(location).toContain('not encrypted either');
 
-    // Bez połączenia widać formularz, nie panel z „Synchronizuj teraz".
+    // With no connection the form is visible, not the panel with "Sync now".
     expect(document.querySelector<HTMLElement>('#sync-connect')?.hidden).toBe(false);
     expect(document.querySelector<HTMLElement>('#sync-connected')?.hidden).toBe(true);
-    expect(text('#sync-secret-label')).toBe('Token osobisty GitHub');
+    expect(text('#sync-secret-label')).toBe('GitHub personal access token');
   });
 
-  it('eksportuje pełną kopię pod nazwą z datą', async () => {
+  it('exports a full backup under a dated name', async () => {
     click('#export-json');
     await settle(60);
 
@@ -160,23 +160,23 @@ describe('strona opcji', () => {
     expect(file?.url).toBe('blob:savely/test');
   });
 
-  it('eksportuje zakładki jako osobny plik HTML', async () => {
+  it('exports the bookmarks as a separate HTML file', async () => {
     click('#export-html');
     await settle(60);
 
     expect(downloads.at(-1)?.filename).toMatch(/^savely-bookmarks-\d{4}-\d{2}-\d{2}\.html$/);
   });
 
-  it('import kopii dokłada nowe pozycje i raportuje, co zrobił', async () => {
+  it('importing a backup adds new items and reports what it did', async () => {
     const backup = serializeBackup(
       buildBackup(
         {
           items: [
             {
-              id: 'z-pliku',
+              id: 'from-file',
               url: 'https://c.example/3',
               resolvedUrl: 'https://c.example/3',
-              title: 'Z kopii',
+              title: 'From the backup',
               excerpt: '',
               byline: null,
               siteName: null,
@@ -203,48 +203,48 @@ describe('strona opcji', () => {
       ),
     );
 
-    await importFile('kopia.json', backup);
+    await importFile('backup.json', backup);
 
     const report = text('#report');
-    expect(report).toContain('kopia Savely');
-    expect(report).toContain('Dodano 1 nowych pozycji, scalono 0 istniejących.');
-    expect(report).toContain('Nic nie zostało pominięte.');
-    // Licznik pozycji odświeża się od razu.
+    expect(report).toContain('a Savely backup');
+    expect(report).toContain('Added 1 new items, merged 0 existing ones.');
+    expect(report).toContain('Nothing was skipped.');
+    // The item counter refreshes immediately.
     expect(document.querySelector('.stat__value')?.textContent).toBe('3');
   });
 
-  it('import CSV z Pocketa raportuje pominięte wiersze z powodem', async () => {
+  it('a Pocket CSV import reports the skipped rows with a reason', async () => {
     await importFile(
       'pocket.csv',
-      ['title,url,time_added,tags,status', 'Bez adresu,,1700000000,,unread'].join('\n'),
+      ['title,url,time_added,tags,status', 'No address,,1700000000,,unread'].join('\n'),
     );
 
-    expect(text('#report')).toContain('nie ma w nim ani jednej pozycji');
+    expect(text('#report')).toContain('no item that could be saved');
     expect(document.querySelector('#report')?.className).toContain('report--error');
   });
 
-  it('uszkodzony plik nie rusza bazy', async () => {
-    await importFile('smieci.json', '{to nie jest json');
+  it('a damaged file leaves the database alone', async () => {
+    await importFile('junk.json', '{this is not json');
 
-    expect(text('#report')).toContain('Nie zaimportowano nic');
+    expect(text('#report')).toContain('Nothing was imported');
     expect(document.querySelector('.stat__value')?.textContent).toBe('3');
   });
 
-  it('robi kopię na żądanie i pokazuje ją na liście', async () => {
+  it('takes a backup on demand and shows it in the list', async () => {
     click('#snapshot-now');
     await settle(80);
 
     expect(await listSnapshots()).toHaveLength(1);
-    expect(text('#snapshots')).toContain('3 pozycji');
+    expect(text('#snapshots')).toContain('3 items');
   });
 
-  it('kasowanie danych wymaga potwierdzenia', async () => {
+  it('wiping the data requires confirmation', async () => {
     click('#wipe');
     await settle();
 
     const dialog = document.querySelector<HTMLDialogElement>('#confirm-dialog');
     expect(dialog?.open).toBe(true);
-    expect(text('#confirm-text')).toContain('3 pozycji');
+    expect(text('#confirm-text')).toContain('3 items');
 
     click('#confirm-cancel');
     await settle();

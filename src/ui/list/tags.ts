@@ -1,9 +1,9 @@
 /**
- * Edytor tagów: mały panel zakotwiczony przy karcie.
+ * The tag editor: a small panel anchored to a card.
  *
- * Panel jest pozycjonowany absolutnie nad listą, a nie wstawiany w kartę -
- * karty muszą mieć stałą wysokość, inaczej wirtualizacja przestaje liczyć
- * pozycje wierszy poprawnie.
+ * The panel is positioned absolutely above the list rather than inserted into
+ * the card - cards must keep a fixed height, otherwise the virtualization stops
+ * computing row positions correctly.
  */
 import { normalizeTags } from '@/lib/db';
 
@@ -11,7 +11,7 @@ export interface TagEditorOptions {
   host: HTMLElement;
   anchor: HTMLElement;
   tags: readonly string[];
-  /** Wszystkie tagi w bazie - źródło podpowiedzi. */
+  /** Every tag in the database - the source of the suggestions. */
   known: readonly string[];
   apply: (tags: string[]) => void;
   closed?: () => void;
@@ -35,8 +35,8 @@ export function openTagEditor(options: TagEditorOptions): void {
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'tag-editor__input';
-  input.placeholder = 'Dodaj tag i Enter';
-  input.setAttribute('aria-label', 'Dodaj tag');
+  input.placeholder = 'Add a tag and press Enter';
+  input.setAttribute('aria-label', 'Add a tag');
   input.autocomplete = 'off';
 
   const suggestions = document.createElement('div');
@@ -54,7 +54,7 @@ export function openTagEditor(options: TagEditorOptions): void {
     if (current.length === 0) {
       const empty = document.createElement('span');
       empty.className = 'tag-editor__empty';
-      empty.textContent = 'Brak tagów';
+      empty.textContent = 'No tags';
       chips.append(empty);
       return;
     }
@@ -63,7 +63,7 @@ export function openTagEditor(options: TagEditorOptions): void {
       chip.type = 'button';
       chip.className = 'chip chip--removable';
       chip.textContent = `#${tag} ✕`;
-      chip.title = `Usuń tag #${tag}`;
+      chip.title = `Remove the #${tag} tag`;
       chip.addEventListener('click', () => {
         commit(current.filter((value) => value !== tag));
       });
@@ -106,7 +106,7 @@ export function openTagEditor(options: TagEditorOptions): void {
       event.preventDefault();
       closeTagEditor();
     }
-    // Reszta klawiszy zostaje w polu - globalne skróty nie mogą tu działać.
+    // Every other key stays in the field - global shortcuts must not fire here.
     event.stopPropagation();
   });
 
@@ -115,7 +115,7 @@ export function openTagEditor(options: TagEditorOptions): void {
   renderChips();
   renderSuggestions();
 
-  // Zakotwiczenie: pod przyciskiem, ale nigdy poza prawą krawędzią okna.
+  // Anchoring: below the button, but never past the right edge of the window.
   const rect = anchor.getBoundingClientRect();
   const width = Math.min(280, document.documentElement.clientWidth - 16);
   host.style.width = `${String(width)}px`;
@@ -127,7 +127,7 @@ export function openTagEditor(options: TagEditorOptions): void {
   const onOutside = (event: MouseEvent): void => {
     if (!host.contains(event.target as Node)) closeTagEditor();
   };
-  // `setTimeout`, bo kliknięcie otwierające panel wciąż się propaguje.
+  // `setTimeout`, because the click that opened the panel is still propagating.
   const handle = setTimeout(() => {
     document.addEventListener('mousedown', onOutside);
   }, 0);

@@ -1,7 +1,7 @@
-# zależności
+# dependencies
 node_modules/
 
-# artefakty buildu
+# build artifacts
 dist/
 artifacts/
 web-ext-artifacts/
@@ -10,7 +10,7 @@ web-ext-artifacts/
 *.crx
 *.pem
 
-# cache narzędzi
+# tool caches
 .vite/
 .eslintcache
 coverage/
@@ -22,12 +22,12 @@ playwright-report/
 blob-report/
 .playwright/
 
-# lokalne środowisko
+# local environment
 .env
 .env.*
 !.env.example
 
-# system / edytory
+# system / editors
 .DS_Store
 Thumbs.db
 desktop.ini
@@ -35,6 +35,6 @@ desktop.ini
 .vscode/*
 !.vscode/extensions.json
 
-# logi
+# logs
 *.log
 npm-debug.log*

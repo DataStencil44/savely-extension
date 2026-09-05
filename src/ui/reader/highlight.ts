@@ -1,21 +1,22 @@
 /**
- * Kotwiczenie podświetleń w tekście.
+ * Anchoring highlights in the text.
  *
- * Zapisujemy offsety w **czystym tekście** artykułu plus cytat i kilkadziesiąt
- * znaków kontekstu z obu stron. XPath albo ścieżka po węzłach padłaby przy
- * pierwszej zmianie znaczników (inny podział akapitów, doklejona zajawka,
- * zaktualizowana wersja artykułu). Tekst zmienia się rzadziej niż struktura,
- * a gdy offsety już nie pasują, `locate` odnajduje cytat po kontekście.
+ * We store offsets into the article's **plain text** plus the quote and a few
+ * dozen characters of context on each side. An XPath or a node path would break
+ * on the first change to the markup (a different paragraph split, an excerpt
+ * glued on, an updated version of the article). Text changes less often than
+ * structure, and when the offsets no longer match, `locate` finds the quote by
+ * its context.
  *
- * `locate` jest czystą funkcją na stringach - stąd testy bez DOM-u.
+ * `locate` is a pure function over strings - hence tests without a DOM.
  */
 
-/** Ile znaków kontekstu zapisujemy z każdej strony zaznaczenia. */
+/** How many characters of context we store on each side of the selection. */
 export const CONTEXT_CHARS = 32;
 
 export interface TextSegment {
   node: Text;
-  /** Offset początku węzła w tekście całego artykułu. */
+  /** The node's start offset within the whole article text. */
   start: number;
   end: number;
 }
@@ -38,7 +39,7 @@ export interface TextRange {
   end: number;
 }
 
-/** Mapa: tekst artykułu w całości + gdzie w nim leży każdy węzeł tekstowy. */
+/** The map: the whole article text + where each text node sits inside it. */
 export function buildTextMap(root: Node): TextMap {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const segments: TextSegment[] = [];
@@ -68,11 +69,11 @@ export function makeAnchor(map: TextMap, range: TextRange): Anchor {
 }
 
 /**
- * Znajduje zaznaczenie w tekście, który mógł się w międzyczasie przesunąć.
+ * Finds the selection in text that may have shifted in the meantime.
  *
- * Kolejność: dokładne trafienie offsetów -> najlepsze wystąpienie cytatu,
- * gdzie o wyborze decyduje zgodność kontekstu, a odległość od pierwotnego
- * offsetu tylko rozstrzyga remisy. `null`, gdy cytatu już nie ma.
+ * The order: an exact offset hit -> the best occurrence of the quote, where
+ * matching context decides and the distance from the original offset only
+ * breaks ties. `null` when the quote is gone.
  */
 export function locate(text: string, anchor: Anchor): TextRange | null {
   if (anchor.quote === '') return null;
@@ -104,7 +105,7 @@ export function locate(text: string, anchor: Anchor): TextRange | null {
     if (anchor.suffix !== '' && text.slice(after, after + anchor.suffix.length) === anchor.suffix) {
       score += 4;
     }
-    // Im bliżej pierwotnego miejsca, tym lepiej - ale to tylko rozstrzygnięcie.
+    // The closer to the original spot the better - but this is only a tie-breaker.
     score -= Math.abs(candidate - anchor.start) / Math.max(text.length, 1);
 
     if (score > bestScore) {
@@ -122,8 +123,9 @@ function offsetOfPoint(map: TextMap, node: Node, offset: number): number | null 
     return segment === undefined ? null : segment.start + offset;
   }
 
-  // Punkt w elemencie: `offset` to indeks dziecka. Bierzemy pierwszy węzeł
-  // tekstowy od tego miejsca w prawo, a gdy go nie ma - koniec poprzedniego.
+  // A point inside an element: `offset` is a child index. We take the first
+  // text node from there rightwards, and when there is none - the end of the
+  // previous one.
   const children = [...node.childNodes];
   const after = children.slice(offset);
   for (const child of after) {
@@ -138,7 +140,7 @@ function offsetOfPoint(map: TextMap, node: Node, offset: number): number | null 
   return null;
 }
 
-/** Zakres z zaznaczenia użytkownika sprowadzony do offsetów tekstowych. */
+/** The user's selection range reduced to text offsets. */
 export function offsetsFromRange(map: TextMap, range: Range): TextRange | null {
   const start = offsetOfPoint(map, range.startContainer, range.startOffset);
   const end = offsetOfPoint(map, range.endContainer, range.endOffset);
@@ -147,11 +149,11 @@ export function offsetsFromRange(map: TextMap, range: Range): TextRange | null {
 }
 
 /**
- * Owija zakres w `<mark>`. Zaznaczenie potrafi przechodzić przez kilka węzłów
- * tekstowych (pogrubienia, linki), więc każdy kawałek dostaje własny znacznik.
+ * Wraps a range in `<mark>`. A selection can span several text nodes (bold
+ * runs, links), so every piece gets its own marker.
  *
- * Węzły są dzielone, więc mapa po tej operacji jest nieaktualna - kolejne
- * podświetlenie liczymy z nowej mapy.
+ * Nodes are split, so the map is stale after this operation - the next
+ * highlight is computed from a fresh map.
  */
 export function wrapRange(map: TextMap, range: TextRange, highlightId: string): HTMLElement[] {
   const marks: HTMLElement[] = [];
@@ -180,7 +182,7 @@ export function wrapRange(map: TextMap, range: TextRange, highlightId: string): 
   return marks;
 }
 
-/** Zdejmuje znaczniki jednego podświetlenia, scalając z powrotem tekst. */
+/** Removes one highlight's markers, merging the text back together. */
 export function unwrapHighlight(root: ParentNode, highlightId: string): void {
   for (const mark of root.querySelectorAll(`mark[data-highlight="${highlightId}"]`)) {
     const parent = mark.parentNode;

@@ -1,14 +1,15 @@
 /**
- * Zapis artykulu - dwie sciezki, jeden wspolny ogon.
+ * Saving an article - two paths, one shared tail.
  *
- * A) `savePageInTab` - strona jest otwarta: content script czyta zywy DOM.
- *    Omija CORS i widzi tresc za loginem, bo czyta to samo, co uzytkownik.
- * B) `saveLinkInBackground` - zapis linku, ktorego nikt nie otworzyl:
- *    `fetch` w tle + parsowanie poza karta. Wymaga zgody na domene.
+ * A) `savePageInTab` - the page is open: the content script reads the live DOM.
+ *    It sidesteps CORS and sees content behind a login, because it reads
+ *    exactly what the user sees.
+ * B) `saveLinkInBackground` - saving a link nobody opened: a background `fetch`
+ *    plus parsing outside the tab. Requires host permission.
  *
- * Kazda sciezka to **jedna awaitowana sekwencja**, bez stanu w zmiennych
- * modulowych: gdy Chrome ubije service workera w polowie, nie zostaje po nas
- * nic poza tym, co juz jest w IndexedDB (CLAUDE.md 5.5).
+ * Each path is **one awaited sequence**, with no state in module variables:
+ * when Chrome kills the service worker halfway, nothing of ours is left except
+ * what is already in IndexedDB (CLAUDE.md 5.5).
  */
 import browser from 'webextension-polyfill';
 
@@ -22,9 +23,9 @@ import type { ExtractOutcome } from '@/types/article';
 
 export interface SaveResult {
   ok: boolean;
-  /** Komunikat gotowy do pokazania uzytkownikowi. */
+  /** A message ready to show the user. */
   message: string;
-  /** Zapis sie udal, ale bez tresci artykulu (wpis ma status 'failed'). */
+  /** The save succeeded but without article content (the entry has status 'failed'). */
   degraded: boolean;
   itemId: string | null;
 }
@@ -34,7 +35,7 @@ function fail(message: string): SaveResult {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message !== '' ? error.message : 'nieznany blad';
+  return error instanceof Error && error.message !== '' ? error.message : 'unknown error';
 }
 
 async function sha256Hex(text: string): Promise<string> {
@@ -43,10 +44,10 @@ async function sha256Hex(text: string): Promise<string> {
 }
 
 /**
- * Wspolny ogon obu sciezek: wynik ekstrakcji -> baza.
+ * The shared tail of both paths: extraction result -> database.
  *
- * `requestUrl` to adres, ktory zapisywal uzytkownik; `resolvedUrl` z wyniku
- * moze byc inny (przekierowanie) i to on decyduje o deduplikacji.
+ * `requestUrl` is the address the user was saving; the `resolvedUrl` from the
+ * result may differ (a redirect) and it is the one deduplication goes by.
  */
 async function persist(outcome: ExtractOutcome, requestUrl: string): Promise<SaveResult> {
   if (outcome.kind === 'refused') {
@@ -69,15 +70,15 @@ async function persist(outcome: ExtractOutcome, requestUrl: string): Promise<Sav
       ok: true,
       degraded: true,
       itemId: item.id,
-      message: `Zapisalem sam wpis: ${stub.title}. Tresci nie udalo sie wyciagnac.`,
+      message: `Saved the entry only: ${stub.title}. The content could not be extracted.`,
     };
   }
 
   const { article } = outcome;
 
-  // Najpierw wpis (status 'pending'), potem tresc - `setContent` przestawia
-  // pozycje na 'ready' w tej samej transakcji. Gdy worker zginie miedzy tymi
-  // krokami, na liscie zostaje wpis w stanie 'pending', a nie polowa danych.
+  // The entry first (status 'pending'), then the content - `setContent` flips
+  // the item to 'ready' in the same transaction. If the worker dies between
+  // those steps, the list keeps an entry in 'pending', not half the data.
   const item = await saveItem({
     url: requestUrl,
     resolvedUrl: article.resolvedUrl,
@@ -101,11 +102,11 @@ async function persist(outcome: ExtractOutcome, requestUrl: string): Promise<Sav
     ok: true,
     degraded: false,
     itemId: item.id,
-    message: `Zapisano: ${article.title}`,
+    message: `Saved: ${article.title}`,
   };
 }
 
-/** Sciezka A: strona otwarta w karcie. */
+/** Path A: the page is open in a tab. */
 export async function savePageInTab(tabId: number, url: string): Promise<SaveResult> {
   const problem = checkPageUrl(url);
   if (problem !== null) return fail(problem);
@@ -115,12 +116,12 @@ export async function savePageInTab(tabId: number, url: string): Promise<SaveRes
     await browser.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
     const response: unknown = await browser.tabs.sendMessage(tabId, { type: EXTRACT_REQUEST });
     if (!isOutcomeResponse(response)) {
-      return fail('Karta odpowiedziala czyms, czego nie rozumiem - sprobuj odswiezyc strone.');
+      return fail('The tab answered with something I do not understand - try refreshing the page.');
     }
     outcome = response.outcome;
   } catch (error) {
     return fail(
-      `Nie moge odczytac tej karty (${errorMessage(error)}). Strony wewnetrzne przegladarki, sklep z dodatkami i PDF-y sa poza zasiegiem.`,
+      `I cannot read this tab (${errorMessage(error)}). Browser-internal pages, the add-on store and PDFs are out of reach.`,
     );
   }
 
@@ -128,10 +129,10 @@ export async function savePageInTab(tabId: number, url: string): Promise<SaveRes
 }
 
 /**
- * Sciezka B: link z menu kontekstowego, strona nieotwarta.
+ * Path B: a link from the context menu, the page not open.
  *
- * `requestHostAccess` jest pierwszym `await` - w Firefoksie prosba o dostep
- * musi wyjsc prosto z gestu uzytkownika, inaczej zostanie odrzucona.
+ * `requestHostAccess` is the first `await` - in Firefox the permission request
+ * has to come straight from a user gesture or it is rejected.
  */
 export async function saveLinkInBackground(url: string): Promise<SaveResult> {
   const problem = checkPageUrl(url);
@@ -140,27 +141,27 @@ export async function saveLinkInBackground(url: string): Promise<SaveResult> {
   const granted = await requestHostAccess(url);
   if (!granted) {
     return fail(
-      'Bez zgody na dostep do tej domeny nie pobiore tresci. Przy pierwszym zapisie z danej strony to normalne - kliknij jeszcze raz i potwierdz prosbe.',
+      'Without permission for this host I cannot fetch the content. On the first save from a site that is normal - click again and confirm the request.',
     );
   }
 
   let response: Response;
   try {
-    // `credentials: 'omit'` - zapis linku nie ma prawa uzywac cookies
-    // uzytkownika. Tresc za loginem zapisuje sie sciezka A, z otwartej karty.
+    // `credentials: 'omit'` - saving a link has no right to use the user's
+    // cookies. Content behind a login is saved via path A, from an open tab.
     response = await fetch(url, { credentials: 'omit', redirect: 'follow' });
   } catch (error) {
-    return fail(`Nie udalo sie pobrac strony (${errorMessage(error)}).`);
+    return fail(`Could not fetch the page (${errorMessage(error)}).`);
   }
 
   if (!response.ok) {
-    return fail(`Serwer odpowiedzial ${String(response.status)} - nie mam czego zapisac.`);
+    return fail(`The server answered ${String(response.status)} - there is nothing to save.`);
   }
 
   const contentType = (response.headers.get('content-type') ?? '').toLowerCase();
   if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
     return fail(
-      `Ten adres nie jest strona HTML (${contentType === '' ? 'nieznany typ' : contentType}).`,
+      `This address is not an HTML page (${contentType === '' ? 'unknown type' : contentType}).`,
     );
   }
 
@@ -170,6 +171,6 @@ export async function saveLinkInBackground(url: string): Promise<SaveResult> {
     const outcome = await extractHtmlOutOfBand(html, response.url === '' ? url : response.url);
     return await persist(outcome, url);
   } catch (error) {
-    return fail(`Nie udalo sie przetworzyc strony (${errorMessage(error)}).`);
+    return fail(`Could not process the page (${errorMessage(error)}).`);
   }
 }

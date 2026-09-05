@@ -2,7 +2,7 @@
   "name": "savely-extension",
   "version": "0.1.0",
   "private": true,
-  "description": "Savely - lokalne, bezserwerowe rozszerzenie read-it-later (Chrome/Chromium + Firefox desktop i Android)",
+  "description": "Savely - a local, serverless read-it-later extension (Chrome/Chromium + Firefox desktop and Android)",
   "type": "module",
   "license": "MIT",
   "engines": {

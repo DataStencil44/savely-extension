@@ -1,13 +1,14 @@
 /**
- * Ustawienia czytnika w `storage.sync`.
+ * Reader settings in `storage.sync`.
  *
- * To jedyne dane, które świadomie wychodzą poza urządzenie - ale przez własną
- * synchronizację przeglądarki, nie przez nasz serwer (bo go nie ma). Gdyby
- * `storage.sync` był niedostępny (Firefox bez konta, wyłączona synchronizacja),
- * schodzimy na `storage.local`: lepiej trzymać ustawienia lokalnie niż zgubić.
+ * This is the only data that deliberately leaves the device - but through the
+ * browser's own sync, not through our server (there is none). Should
+ * `storage.sync` be unavailable (Firefox without an account, sync disabled), we
+ * fall back to `storage.local`: better to keep settings locally than to lose
+ * them.
  *
- * Dane ze storage traktujemy jak dane z zewnątrz - każde pole przechodzi przez
- * walidację i zaciskanie zakresu (CLAUDE.md 3).
+ * Data from storage is treated as external - every field goes through
+ * validation and range clamping (CLAUDE.md 3).
  */
 import browser from 'webextension-polyfill';
 
@@ -15,13 +16,13 @@ export type FontFamily = 'serif' | 'sans' | 'dyslexia';
 export type Theme = 'light' | 'dark' | 'sepia' | 'auto';
 
 export interface ReaderSettings {
-  /** Rozmiar tekstu w px. */
+  /** Text size in px. */
   fontSize: number;
   fontFamily: FontFamily;
-  /** Szerokość kolumny w znakach (`ch`). ~68 to komfortowa długość wiersza. */
+  /** Column width in characters (`ch`). ~68 is a comfortable line length. */
   columnWidth: number;
   theme: Theme;
-  /** Gdy `false`, obrazki z oryginału nie są pobierane - zero ruchu na zewnątrz. */
+  /** When `false`, images from the original are not fetched - zero outbound traffic. */
   remoteImages: boolean;
 }
 
@@ -49,7 +50,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-/** Braki i śmieci zastępujemy domyślnymi - ustawienia nigdy nie mają wywrócić czytnika. */
+/** Missing and junk values fall back to the defaults - settings must never break the reader. */
 export function parseSettings(value: unknown): ReaderSettings {
   if (!isRecord(value)) return { ...DEFAULT_SETTINGS };
 
@@ -79,7 +80,7 @@ export function parseSettings(value: unknown): ReaderSettings {
 
 async function area(): Promise<browser.Storage.StorageArea> {
   try {
-    // Sam odczyt wystarczy, żeby sprawdzić, czy obszar w ogóle działa.
+    // A read alone is enough to check whether the area works at all.
     await browser.storage.sync.get(STORAGE_KEY);
     return browser.storage.sync;
   } catch {
@@ -105,13 +106,13 @@ export async function saveSettings(patch: Partial<ReaderSettings>): Promise<Read
     const store = await area();
     await store.set({ [STORAGE_KEY]: next });
   } catch {
-    // Brak zapisu nie może przerwać czytania - ustawienie zadziała do końca sesji.
+    // A failed write must not interrupt reading - the setting holds for this session.
   }
 
   return next;
 }
 
-/** Zmiana ustawień w innej karcie ma się przenieść tutaj bez przeładowania. */
+/** A settings change in another tab should land here without a reload. */
 export function onSettingsChanged(listener: (settings: ReaderSettings) => void): void {
   browser.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'sync' && areaName !== 'local') return;

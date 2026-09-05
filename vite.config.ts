@@ -5,11 +5,12 @@ import { defineConfig, type Plugin } from 'vite';
 import { manifestPlugin, type Target } from './build/make-manifest';
 
 /**
- * Jedno zrodlo -> dwa artefakty: dist/chrome i dist/firefox.
- * Target wybiera zmienna srodowiskowa TARGET (patrz skrypty w package.json).
+ * One source -> two artifacts: dist/chrome and dist/firefox.
+ * The target is chosen by the TARGET environment variable (see the scripts in
+ * package.json).
  *
- * Roznice miedzy silnikami zyja WYLACZNIE w build/make-manifest.ts - kod
- * w src/ jest wspolny i wola API przez `browser.*` (CLAUDE.md 5).
+ * The differences between engines live ONLY in build/make-manifest.ts - the
+ * code in src/ is shared and calls APIs through `browser.*` (CLAUDE.md 5).
  */
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url));
@@ -18,9 +19,10 @@ const srcDir = resolve(rootDir, 'src');
 const target: Target = process.env['TARGET'] === 'firefox' ? 'firefox' : 'chrome';
 
 /**
- * Content script musi byc klasycznym skryptem - ani Chrome, ani Firefox nie
- * laduja content scriptow jako ESM. Idzie wiec osobno przez esbuild jako IIFE,
- * podczas gdy reszta (tlo, popup, offscreen) jest budowana przez Vite jako ESM.
+ * The content script has to be a classic script - neither Chrome nor Firefox
+ * loads content scripts as ESM. It therefore goes through esbuild separately as
+ * an IIFE, while the rest (background, popup, offscreen) is built by Vite as
+ * ESM.
  */
 function contentScriptPlugin(outDir: string, isDev: boolean): Plugin {
   return {
@@ -54,7 +56,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     root: srcDir,
-    // Ikony i inne statyki: src/public/** -> dist/<target>/**
+    // Icons and other static files: src/public/** -> dist/<target>/**
     publicDir: resolve(srcDir, 'public'),
     resolve: {
       alias: { '@': srcDir },
@@ -72,14 +74,14 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         input: {
           background: resolve(srcDir, 'background/index.ts'),
-          // Popup i pelna strona listy; sciezka wzgledem `root` trafia do dist
-          // jako ui/list/list.html.
+          // The popup and the full list page; the path relative to `root`
+          // lands in dist as ui/list/list.html.
           list: resolve(srcDir, 'ui/list/list.html'),
           reader: resolve(srcDir, 'ui/reader/index.html'),
-          // Strona opcji: przenoszenie danych, kopie, kasowanie bazy.
+          // The options page: moving data, backups, wiping the database.
           options: resolve(srcDir, 'ui/options/options.html'),
-          // Dokument offscreen - uzywany tylko na Chromium, ale budowany zawsze:
-          // jeden artefakt mniej do rozjechania sie miedzy targetami.
+          // The offscreen document - used only on Chromium, but always built:
+          // one artifact fewer to drift between targets.
           offscreen: resolve(srcDir, 'offscreen/offscreen.html'),
         },
         output: {

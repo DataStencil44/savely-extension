@@ -1,10 +1,10 @@
 /**
- * Matematyka wirtualizacji listy - bez DOM-u, wiec da sie ja przetestowac.
+ * The maths of list virtualization - no DOM, so it can be tested.
  *
- * Karty maja stala wysokosc (CSS je przycina), dzieki czemu pozycja kazdego
- * wiersza to zwykle mnozenie i nie musimy mierzyc niczego w ukladzie strony.
- * To jedyny powod, dla ktorego 5000 pozycji renderuje sie plynnie: w DOM-ie
- * siedzi zawsze kilkanascie wezlow, niezaleznie od dlugosci listy.
+ * Cards have a fixed height (the CSS clips them), which makes every row's
+ * position plain multiplication and means we never measure anything in the
+ * page layout. That is the only reason 5000 items render smoothly: the DOM
+ * always holds a dozen or so nodes, whatever the length of the list.
  */
 
 export interface WindowInput {
@@ -12,18 +12,18 @@ export interface WindowInput {
   viewportHeight: number;
   total: number;
   rowHeight: number;
-  /** Ile wierszy renderowac ponad ekranem z kazdej strony. */
+  /** How many rows to render beyond the viewport on each side. */
   overscan: number;
 }
 
 export interface WindowRange {
-  /** Indeks pierwszego renderowanego wiersza (wlacznie). */
+  /** The index of the first rendered row (inclusive). */
   start: number;
-  /** Indeks za ostatnim renderowanym wierszem. */
+  /** The index just past the last rendered row. */
   end: number;
-  /** Przesuniecie kontenera wierszy w pikselach. */
+  /** The row container's offset in pixels. */
   offsetY: number;
-  /** Wysokosc rozpychacza, zeby pasek przewijania byl prawdziwy. */
+  /** The spacer's height, so the scrollbar tells the truth. */
   totalHeight: number;
 }
 
@@ -46,8 +46,8 @@ export function computeWindow(input: WindowInput): WindowRange {
 }
 
 /**
- * Nowy `scrollTop`, przy ktorym wiersz `index` jest w calosci widoczny.
- * `null`, gdy nic nie trzeba przewijac.
+ * The new `scrollTop` at which row `index` is fully visible.
+ * `null` when no scrolling is needed.
  */
 export function scrollTopFor(
   index: number,

@@ -1,12 +1,13 @@
 /**
- * Background: bezstanowy router zdarzen.
+ * Background: a stateless event router.
  *
- * Listenery rejestrujemy synchronicznie na najwyzszym poziomie modulu - po
- * wybudzeniu service workera (Chrome) albo strony zdarzen (Firefox) modul
- * startuje od zera, a rejestracja po `await` by nie zdazyla (CLAUDE.md 5.5).
+ * Listeners are registered synchronously at the top level of the module - once
+ * the service worker (Chrome) or the event page (Firefox) wakes up, the module
+ * starts from scratch and a registration after an `await` would be too late
+ * (CLAUDE.md 5.5).
  *
- * Kazde zdarzenie odpala jedna, awaitowana sekwencje w `src/lib/save.ts`.
- * Tutaj zostaje tylko: skad przyszlo zadanie i jak pokazac wynik.
+ * Every event triggers one awaited sequence in `src/lib/save.ts`. What stays
+ * here is only: where the request came from and how to show the result.
  */
 import browser from 'webextension-polyfill';
 
@@ -24,7 +25,7 @@ const MENU_SAVE_LINK = 'savely-save-link';
 const BACKUP_ALARM = 'savely-daily-backup';
 const DAY_MINUTES = 24 * 60;
 
-/** Powiadomienia o problemach. Badge zostawiamy wolajacemu - patrz nizej. */
+/** Problem notifications. The badge is left to the caller - see below. */
 async function announce(result: SaveResult, tabId: number | undefined): Promise<void> {
   if (!result.ok) {
     await clearBadge(tabId);
@@ -32,19 +33,19 @@ async function announce(result: SaveResult, tabId: number | undefined): Promise<
     return;
   }
 
-  // Zapis bez tresci tez jest zapisem - badge sie nalezy, ale uzytkownik ma
-  // wiedziec, ze na liscie wyladuje sam wpis.
+  // A save without content is still a save - the badge is earned, but the user
+  // should know that only the entry itself lands in the list.
   if (result.degraded) await notifyProblem(result.message);
 }
 
-/** Karta ze zdarzenia, a gdy jej nie ma - aktywna karta biezacego okna. */
+/** The tab from the event, or - when there is none - the active tab of the current window. */
 async function resolveTab(tab?: browser.Tabs.Tab): Promise<browser.Tabs.Tab | undefined> {
   if (tab?.id !== undefined && tab.url !== undefined) return tab;
   const [active] = await browser.tabs.query({ active: true, currentWindow: true });
   return active;
 }
 
-/** Sciezka A od zdarzenia do komunikatu. Zwraca wynik dla wolajacego. */
+/** Path A from the event to the message. Returns the result for the caller. */
 async function saveActiveTab(
   tab: browser.Tabs.Tab | undefined,
 ): Promise<{ result: SaveResult; tabId: number | undefined }> {
@@ -55,56 +56,56 @@ async function saveActiveTab(
       ok: false,
       degraded: false,
       itemId: null,
-      message: 'Nie widze aktywnej karty do zapisania.',
+      message: 'I cannot see an active tab to save.',
     };
     await announce(result, undefined);
     return { result, tabId: undefined };
   }
 
-  // Badge z poprzedniego zapisu mogl zostac, gdyby worker zginal w trakcie.
+  // A badge from a previous save could linger if the worker died mid-way.
   await clearBadge(resolved.id);
   const result = await savePageInTab(resolved.id, resolved.url);
   await announce(result, resolved.id);
   return { result, tabId: resolved.id };
 }
 
-/** Wariant dla zdarzen: czekamy tez na zgasniecie badge'a. */
+/** The variant for events: we also wait for the badge to fade. */
 async function runSaveActiveTab(tab?: browser.Tabs.Tab): Promise<void> {
   const { result, tabId } = await saveActiveTab(tab);
   if (result.ok) await flashSaved(tabId);
 }
 
-// Klikniecie ikony. Dopoki manifest ma `action.default_popup`, przegladarka
-// otwiera popup i to zdarzenie sie nie odpala - zapis z paska idzie wtedy
-// przyciskiem w popupie (wiadomosc SAVE_ACTIVE_TAB nizej). Listener zostaje
-// na wypadek wylaczenia popupu.
+// Toolbar icon click. As long as the manifest has `action.default_popup`, the
+// browser opens the popup and this event never fires - saving from the toolbar
+// then goes through the popup button (the SAVE_ACTIVE_TAB message below). The
+// listener stays in case the popup is disabled.
 browser.action.onClicked.addListener((tab) => {
   void runSaveActiveTab(tab);
 });
 
-// Skrot klawiszowy (Ctrl+Shift+S / Command+Shift+S).
+// Keyboard shortcut (Ctrl+Shift+S / Command+Shift+S).
 browser.commands.onCommand.addListener((command, tab) => {
   if (command !== SAVE_COMMAND) return;
   void runSaveActiveTab(tab);
 });
 
 /**
- * Alarm dobowej kopii metadanych.
+ * The daily metadata backup alarm.
  *
- * `alarms.create` z tym samym ID nadpisuje istniejacy alarm, wiec wolanie go
- * przy kazdej instalacji i starcie przegladarki jest bezpieczne - a konieczne,
- * bo alarmy nie przezywaja aktualizacji rozszerzenia. Pierwsze odpalenie po
- * minucie, zeby nie robic kopii w trakcie instalacji.
+ * `alarms.create` with the same ID overwrites an existing alarm, so calling it
+ * on every install and browser start is safe - and necessary, because alarms do
+ * not survive an extension update. The first run is a minute in, so we do not
+ * take a backup during installation.
  */
 function scheduleDailyBackup(): void {
   void browser.alarms.create(BACKUP_ALARM, { delayInMinutes: 1, periodInMinutes: DAY_MINUTES });
 }
 
 /**
- * Automatyczna synchronizacja. Cicha z zalozenia: bez zgody uzytkownika nie ma
- * providera, a bez providera nie ma czego robic. Blad ladnie ląduje w stanie
- * (`lastError`) i pokazuja go opcje - powiadomienie co 30 minut o tym samym
- * problemie byloby udreka.
+ * Automatic sync. Silent by design: without the user's consent there is no
+ * provider, and without a provider there is nothing to do. An error lands in
+ * the state (`lastError`) and the options page shows it - a notification every
+ * 30 minutes about the same problem would be torture.
  */
 async function runScheduledSync(): Promise<void> {
   const state = await loadSyncState();
@@ -118,22 +119,22 @@ async function runScheduledSync(): Promise<void> {
 
 browser.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === BACKUP_ALARM) {
-    // Kopia jest cicha z zalozenia: nie ma o czym powiadamiac, a blad nie moze
-    // wywrocic workera - stad wlasna obsluga odrzucenia.
+    // The backup is silent by design: there is nothing to announce, and an
+    // error must not take down the worker - hence the explicit rejection handler.
     void createSnapshotIfDue().catch((error: unknown) => {
-      console.error('[savely] dobowa kopia nie powiodla sie:', error);
+      console.error('[savely] the daily backup failed:', error);
     });
     return;
   }
 
   if (alarm.name === SYNC_ALARM) {
     void runScheduledSync().catch((error: unknown) => {
-      console.warn('[savely] automatyczna synchronizacja nie powiodla sie:', error);
+      console.warn('[savely] automatic sync failed:', error);
     });
   }
 });
 
-/** Alarmy nie przezywaja aktualizacji rozszerzenia - odtwarzamy je przy starcie. */
+/** Alarms do not survive an extension update - we recreate them at startup. */
 function restoreAlarms(): void {
   scheduleDailyBackup();
   void loadSyncState().then(
@@ -144,9 +145,9 @@ function restoreAlarms(): void {
 
 browser.runtime.onStartup.addListener(restoreAlarms);
 
-// Menu kontekstowe tworzymy przy instalacji - `create` z tym samym ID przy
-// kazdym wybudzeniu rzucaloby bledem. Firefox na Androidzie nie ma menu
-// kontekstowego strony, stad obsluga odrzucenia.
+// The context menu is created on install - `create` with the same ID on every
+// wake-up would throw. Firefox for Android has no page context menu, hence the
+// rejection handler.
 browser.runtime.onInstalled.addListener(() => {
   restoreAlarms();
 
@@ -154,17 +155,17 @@ browser.runtime.onInstalled.addListener(() => {
     () => {
       browser.contextMenus.create({
         id: MENU_SAVE_PAGE,
-        title: 'Zapisz do Savely',
+        title: 'Save to Savely',
         contexts: ['page', 'selection'],
       });
       browser.contextMenus.create({
         id: MENU_SAVE_LINK,
-        title: 'Zapisz link do Savely',
+        title: 'Save link to Savely',
         contexts: ['link'],
       });
     },
     (error: unknown) => {
-      console.warn('[savely] menu kontekstowe niedostepne:', error);
+      console.warn('[savely] context menu unavailable:', error);
     },
   );
 });
@@ -180,29 +181,29 @@ browser.contextMenus.onClicked.addListener((info, tab) => {
   const linkUrl = typeof info.linkUrl === 'string' ? info.linkUrl : undefined;
   if (linkUrl === undefined) return;
 
-  // Sciezka B. `saveLinkInBackground` zaczyna od `permissions.request()`,
-  // wiec zadnego `await` przed nia - inaczej Firefox uzna, ze prosba nie
-  // wyszla z gestu uzytkownika (CLAUDE.md 5.3).
+  // Path B. `saveLinkInBackground` starts with `permissions.request()`, so no
+  // `await` before it - otherwise Firefox decides the request did not come from
+  // a user gesture (CLAUDE.md 5.3).
   void saveLinkInBackground(linkUrl).then(
     async (result) => {
       await announce(result, tab?.id);
       if (result.ok) await flashSaved(tab?.id);
     },
     (error: unknown) => {
-      console.error('[savely] zapis linku nie powiodl sie:', error);
-      return notifyProblem('Zapis linku nie powiodl sie.');
+      console.error('[savely] saving the link failed:', error);
+      return notifyProblem('Saving the link failed.');
     },
   );
 });
 
-// Zapis z popupu (przycisk "Zapisz te strone").
+// Saving from the popup (the "Save this page" button).
 browser.runtime.onMessage.addListener(
   (message: unknown): Promise<SaveResultMessage> | undefined => {
     if (!isSaveActiveTabRequest(message)) return undefined;
 
     return saveActiveTab(undefined).then(({ result, tabId }): SaveResultMessage => {
-      // Badge miga w tle - popup ma dostac odpowiedz od razu, a nie po dwoch
-      // sekundach czekania na zgasniecie znaczka.
+      // The badge flashes in the background - the popup should get its answer
+      // immediately, not after two seconds of waiting for the badge to fade.
       if (result.ok) void flashSaved(tabId);
 
       return {

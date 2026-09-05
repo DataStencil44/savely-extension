@@ -1,34 +1,34 @@
 /**
- * Czyste funkcje o adresach - bez API przegladarki, wiec testowalne bez niej.
+ * Pure functions about addresses - no browser APIs, so testable without one.
  */
 
 /**
- * Adresy, ktorych nie ma sensu tykac. PDF odsiewamy po rozszerzeniu juz tutaj,
- * zeby nie wstrzykiwac skryptu do widoku PDF-a; drugi bezpiecznik
- * (`document.contentType`) siedzi w `extractFromDocument`.
+ * Addresses not worth touching. PDFs are filtered out by extension right here,
+ * so no script is injected into a PDF viewer; the second safeguard
+ * (`document.contentType`) sits in `extractFromDocument`.
  *
- * Zwraca komunikat dla uzytkownika albo `null`, gdy adres jest w porzadku.
+ * Returns a message for the user, or `null` when the address is fine.
  */
 export function checkPageUrl(url: string): string | null {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    return 'Nie rozpoznaje adresu tej strony.';
+    return 'I do not recognize this page address.';
   }
 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return `Savely zapisuje tylko strony http(s), a to jest ${parsed.protocol}//`;
+    return `Savely only saves http(s) pages, and this is ${parsed.protocol}//`;
   }
 
   if (/\.pdf$/i.test(parsed.pathname)) {
-    return 'To jest PDF, a nie strona HTML - Savely nie ma z czego zrobic artykulu.';
+    return 'This is a PDF, not an HTML page - Savely has nothing to build an article from.';
   }
 
   return null;
 }
 
-/** Wzorzec dopasowania dla calej domeny, np. `https://example.com/*`. */
+/** A match pattern for a whole host, e.g. `https://example.com/*`. */
 export function hostPattern(url: string): string | null {
   try {
     const parsed = new URL(url);

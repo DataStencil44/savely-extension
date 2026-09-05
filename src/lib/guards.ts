@@ -1,9 +1,9 @@
 /**
- * Type guardy dla danych spoza modulu: wiadomosci `runtime.sendMessage`
- * przychodza jako `unknown` i dopiero tutaj staja sie typami (CLAUDE.md 3).
+ * Type guards for data from outside the module: `runtime.sendMessage` payloads
+ * arrive as `unknown` and only become typed here (CLAUDE.md 3).
  *
- * Wiadomosc moze przyjsc od dowolnego kontekstu rozszerzenia, wiec traktujemy
- * ja jak dane z zewnatrz, nie jak zaufany obiekt.
+ * A message can come from any extension context, so we treat it as external
+ * data, not as a trusted object.
  */
 import {
   EXTRACT_REQUEST,

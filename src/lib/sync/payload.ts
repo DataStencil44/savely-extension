@@ -1,14 +1,14 @@
 /**
- * Ładunek synchronizacji: obiekt <-> pliki providera.
+ * The sync payload: object <-> provider files.
  *
- * Dwa pliki, bo mają różne cykle życia i różne rozmiary: metadane (JSON, małe,
- * czytelne dla człowieka) i treści (gzip + base64, duże, nie do czytania).
- * Rozdzielenie pozwala też providerowi „lokalny folder" wersjonować metadane
- * w gicie bez wciągania megabajtów HTML-a.
+ * Two files, because they have different life cycles and different sizes:
+ * metadata (JSON, small, human-readable) and content (gzip + base64, large, not
+ * for reading). The split also lets a "local folder" provider version the
+ * metadata in git without dragging in megabytes of HTML.
  *
- * Dane wracające od providera to dane z zewnątrz (CLAUDE.md 3): mogły zostać
- * ręcznie zepsute w gistcie, przyjść ze starszej wersji rozszerzenia albo
- * z zupełnie innego programu. Każde pole przechodzi walidację.
+ * Data coming back from a provider is external data (CLAUDE.md 3): it may have
+ * been hand-edited in the gist, may come from an older version of the extension
+ * or from an entirely different program. Every field is validated.
  */
 import { normalizeTags, normalizeUrl } from '../db';
 
@@ -25,7 +25,7 @@ import {
   type SyncPayload,
 } from './types';
 
-/** Plik nie nadaje się do scalenia - lepiej przerwać niż scalić śmieci. */
+/** The file is unfit for merging - better to stop than to merge junk. */
 export class SyncPayloadError extends Error {
   override readonly name = 'SyncPayloadError';
 }
@@ -90,8 +90,9 @@ function readItem(raw: unknown): SyncItem | null {
     wordCount,
     estReadingMinutes: Math.max(0, asNumber(raw['estReadingMinutes'], 0)),
     savedAt,
-    // Bez `updatedAt` nie da się rozstrzygnąć konfliktu - wtedy najbezpieczniej
-    // udawać rekord możliwie stary, żeby nie nadpisał świeższej strony.
+    // Without `updatedAt` a conflict cannot be resolved - the safest move is
+    // to pretend the record is as old as possible, so it does not overwrite a
+    // fresher side.
     updatedAt: asNumber(raw['updatedAt'], savedAt),
     readAt: asNullableNumber(raw['readAt']),
     archived: raw['archived'] === true,
@@ -126,7 +127,7 @@ function readContents(raw: unknown): Record<string, SyncContent> {
   return contents;
 }
 
-/** Obiekt -> pliki. Treści idą osobno, skompresowane. */
+/** Object -> files. Content goes separately, compressed. */
 export async function buildFiles(payload: SyncPayload): Promise<SyncFiles> {
   const metadata = {
     format: payload.format,
@@ -138,34 +139,34 @@ export async function buildFiles(payload: SyncPayload): Promise<SyncFiles> {
   };
 
   return {
-    // Dwie spacje wcięcia: ten plik ktoś kiedyś otworzy w przeglądarce gista.
+    // Two spaces of indentation: someone will eventually open this file in the gist viewer.
     [METADATA_FILE]: `${JSON.stringify(metadata, null, 2)}\n`,
     [CONTENTS_FILE]: await gzipToBase64(JSON.stringify(payload.contents)),
   };
 }
 
-/** Pliki -> obiekt. Rzuca `SyncPayloadError`, gdy to nie są nasze dane. */
+/** Files -> object. Throws `SyncPayloadError` when this is not our data. */
 export async function parseFiles(files: SyncFiles): Promise<SyncPayload> {
   const metadataText = files[METADATA_FILE];
   if (metadataText === undefined) {
-    throw new SyncPayloadError(`Brak pliku ${METADATA_FILE} - to nie są dane Savely.`);
+    throw new SyncPayloadError(`No ${METADATA_FILE} file - this is not Savely data.`);
   }
 
   let metadata: unknown;
   try {
     metadata = JSON.parse(metadataText);
   } catch {
-    throw new SyncPayloadError('Metadane po drugiej stronie nie są poprawnym JSON-em.');
+    throw new SyncPayloadError('The metadata on the other side is not valid JSON.');
   }
 
   if (!isRecord(metadata) || metadata['format'] !== SYNC_FORMAT) {
-    throw new SyncPayloadError('To nie są dane synchronizacji Savely.');
+    throw new SyncPayloadError('This is not Savely sync data.');
   }
 
   const formatVersion = asNumber(metadata['formatVersion'], 0);
   if (formatVersion > SYNC_FORMAT_VERSION) {
     throw new SyncPayloadError(
-      `Dane w nowszym formacie (${String(formatVersion)}) niż rozumie ta wersja rozszerzenia - zaktualizuj Savely na tym urządzeniu.`,
+      `The data uses a newer format (${String(formatVersion)}) than this version of the extension understands - update Savely on this device.`,
     );
   }
 
@@ -174,7 +175,7 @@ export async function parseFiles(files: SyncFiles): Promise<SyncPayload> {
   const seen = new Set<string>();
   for (const raw of rawItems) {
     const item = readItem(raw);
-    // Duplikat adresu w pliku: pierwszy wygrywa, tak samo jak przy imporcie.
+    // A duplicate address in the file: the first one wins, same as on import.
     if (item !== null && !seen.has(item.url)) {
       seen.add(item.url);
       items.push(item);
@@ -197,8 +198,9 @@ export async function parseFiles(files: SyncFiles): Promise<SyncPayload> {
     try {
       contents = readContents(JSON.parse(await gunzipFromBase64(contentsText)));
     } catch {
-      // Metadane bez treści są nadal warte scalenia - treść odzyska się
-      // ponownym zapisem strony. Lepsze to niż odrzucenie całej paczki.
+      // Metadata without content is still worth merging - the content can be
+      // recovered by saving the page again. Better than rejecting the whole
+      // bundle.
       contents = {};
     }
   }

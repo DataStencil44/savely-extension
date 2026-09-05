@@ -1,16 +1,16 @@
 /**
- * Kontrakty wiadomosci miedzy kontekstami rozszerzenia.
- * Walidacja przychodzacych danych: `src/lib/guards.ts` (CLAUDE.md 3).
+ * Message contracts between the extension's contexts.
+ * Validation of incoming data: `src/lib/guards.ts` (CLAUDE.md 3).
  */
 import type { ExtractOutcome } from './article';
 
-/** tlo -> content script w karcie: "wyciagnij tresc z tej strony". */
+/** background -> content script in the tab: "extract the content of this page". */
 export const EXTRACT_REQUEST = 'savely:extract';
 
-/** tlo -> dokument offscreen (tylko Chromium): "sparsuj ten HTML i wyciagnij tresc". */
+/** background -> offscreen document (Chromium only): "parse this HTML and extract the content". */
 export const PARSE_REQUEST = 'savely:parse-html';
 
-/** popup -> tlo: "zapisz strone z aktywnej karty" (sciezka A z paska narzedzi). */
+/** popup -> background: "save the page in the active tab" (path A from the toolbar). */
 export const SAVE_ACTIVE_TAB = 'savely:save-active-tab';
 
 export interface ExtractRequestMessage {
@@ -29,13 +29,13 @@ export interface SaveActiveTabMessage {
 
 export type SavelyRequest = ExtractRequestMessage | ParseRequestMessage | SaveActiveTabMessage;
 
-/** Odpowiedz ekstrakcji i parsowania - ten sam ksztalt, zeby tlo mialo jedna sciezke. */
+/** The extraction and parse response - one shape, so the background has a single path. */
 export interface OutcomeResponse {
   type: 'savely:outcome';
   outcome: ExtractOutcome;
 }
 
-/** Odpowiedz tla na `SAVE_ACTIVE_TAB` - gotowa do pokazania w popupie. */
+/** The background's answer to `SAVE_ACTIVE_TAB` - ready to show in the popup. */
 export interface SaveResultMessage {
   type: 'savely:save-result';
   ok: boolean;

@@ -1,11 +1,12 @@
 /**
- * Generator ikon rozszerzenia -> src/public/icons/icon-{16,32,48,128}.png
+ * The extension icon generator -> src/public/icons/icon-{16,32,48,128}.png
  *
- * Ikony sa wymagane nie tylko dla estetyki: `notifications.create` w Chrome
- * odmawia bez `iconUrl`, wiec bez pliku nie byloby komunikatow o bledach.
+ * The icons are not required merely for looks: `notifications.create` in Chrome
+ * refuses without an `iconUrl`, so without the file there would be no error
+ * messages at all.
  *
- * Skrypt jest jednorazowy (wynik jest w repo) - odpalamy go tylko, gdy zmienia
- * sie ksztalt albo kolor: `node build/make-icons.mjs`.
+ * The script is a one-off (its output is in the repo) - run it only when the
+ * shape or the color changes: `node build/make-icons.mjs`.
  */
 import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -18,7 +19,7 @@ const SIZES = [16, 32, 48, 128];
 const ACCENT = [37, 99, 235];
 const GLYPH = [255, 255, 255];
 
-/** Zaokraglony kwadrat na calym plotnie. */
+/** A rounded square across the whole canvas. */
 function inRoundedSquare(x, y, size) {
   const r = size * 0.22;
   const min = r;
@@ -28,7 +29,7 @@ function inRoundedSquare(x, y, size) {
   return (x - cx) ** 2 + (y - cy) ** 2 <= r * r;
 }
 
-/** Zakladka: prostokat z wcieciem w ksztalcie V u dolu. */
+/** The bookmark: a rectangle with a V-shaped notch at the bottom. */
 function inBookmark(x, y, size) {
   const x0 = size * 0.33;
   const x1 = size * 0.67;
@@ -44,7 +45,7 @@ function inBookmark(x, y, size) {
   return Math.abs(x - (x0 + halfWidth)) > halfWidth * progress;
 }
 
-/** Pokrycie piksela liczone przez nadprobkowanie 4x4 - tanie wygladzanie. */
+/** Pixel coverage computed by 4x4 supersampling - cheap antialiasing. */
 function coverage(px, py, size, predicate) {
   const steps = 4;
   let hits = 0;
@@ -69,7 +70,7 @@ function renderRgba(size) {
 
       const offset = (y * size + x) * 4;
       for (let channel = 0; channel < 3; channel += 1) {
-        // Glyph na tle akcentu; oba juz przemnozone przez wlasne pokrycie.
+        // The glyph over the accent background; both already premultiplied by their coverage.
         const value = ACCENT[channel] * (1 - glyph) + GLYPH[channel] * glyph;
         pixels[offset + channel] = Math.round(value);
       }
@@ -113,7 +114,7 @@ function encodePng(size, pixels) {
   header[9] = 6; // truecolor + alpha
   // 10-12: compression, filter, interlace = 0
 
-  // Kazdy wiersz poprzedzony bajtem filtra (0 = brak).
+  // Every row is prefixed with a filter byte (0 = none).
   const raw = Buffer.alloc(size * (size * 4 + 1));
   for (let y = 0; y < size; y += 1) {
     const from = y * size * 4;

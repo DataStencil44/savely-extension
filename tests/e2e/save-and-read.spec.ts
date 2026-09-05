@@ -1,34 +1,34 @@
 /**
- * Sciezka, ktorej nie da sie sprawdzic w jsdom: prawdziwe Chromium, prawdziwe
- * rozszerzenie, prawdziwa strona.
+ * The path jsdom cannot check: real Chromium, a real extension, a real page.
  *
- * Zapis -> lista -> czytnik przechodzi przez wszystkie warstwy naraz: content
- * script wstrzykiwany przez `scripting.executeScript`, Readability na zywym
- * DOM-ie, DOMPurify, IndexedDB, wirtualizowana lista i widok czytnika.
+ * Save -> list -> reader goes through every layer at once: the content script
+ * injected by `scripting.executeScript`, Readability on a live DOM, DOMPurify,
+ * IndexedDB, the virtualized list and the reader view.
  */
 import { expect, test } from './extension';
 
 /**
- * `chrome.*` w `page.evaluate` leci w kontekscie STRONY rozszerzenia, gdzie nie
- * ma naszego polyfilla - to jedyne miejsce w repo, gdzie tak ma byc.
+ * `chrome.*` inside `page.evaluate` runs in the context of the extension PAGE,
+ * where our polyfill is absent - the only place in the repo where that is
+ * intended.
  */
 declare const chrome: {
   runtime: { sendMessage: (message: unknown) => Promise<{ ok: boolean; message: string }> };
 };
 
-const FIXTURE = 'http://127.0.0.1:5177/artykul.html';
+const FIXTURE = 'http://127.0.0.1:5177/article.html';
 const SAVE_ACTIVE_TAB = 'savely:save-active-tab';
 
-test('zapis strony trafia na liste i otwiera sie w czytniku', async ({ context, extensionId }) => {
+test('a saved page lands in the list and opens in the reader', async ({ context, extensionId }) => {
   const article = await context.newPage();
   await article.goto(FIXTURE);
 
   const list = await context.newPage();
   await list.goto(`chrome-extension://${extensionId}/ui/list/list.html?full=1`);
-  await expect(list.locator('#empty')).toHaveText('Nic tu jeszcze nie ma. Zapisz pierwszą stronę.');
+  await expect(list.locator('#empty')).toHaveText('Nothing here yet. Save your first page.');
 
-  // Tlo zapisuje AKTYWNA karte, wiec fixture musi byc na wierzchu. Wiadomosc
-  // idzie ze strony rozszerzenia dokladnie tak, jak z popupu.
+  // The background saves the ACTIVE tab, so the fixture has to be on top. The
+  // message goes from an extension page exactly as it would from the popup.
   await article.bringToFront();
   const result = await list.evaluate(
     (type) => chrome.runtime.sendMessage({ type }),
@@ -37,36 +37,36 @@ test('zapis strony trafia na liste i otwiera sie w czytniku', async ({ context, 
   expect(result, result.message).toMatchObject({ ok: true });
 
   await list.reload();
-  await expect(list.locator('.card__title')).toHaveText('Centrum bez samochodów');
+  await expect(list.locator('.card__title')).toHaveText('A centre without cars');
   await expect(list.locator('.card__meta')).toContainText('127.0.0.1');
 
-  // Czytnik otwiera sie w nowej karcie.
+  // The reader opens in a new tab.
   const [reader] = await Promise.all([
     context.waitForEvent('page'),
     list.locator('.card__actions .icon').first().click(),
   ]);
   await reader.waitForLoadState('domcontentloaded');
 
-  await expect(reader.locator('.title')).toHaveText('Centrum bez samochodów');
-  await expect(reader.locator('.content')).toContainText('Rada miasta przyjęła wczoraj uchwałę');
-  await expect(reader.locator('.content h2')).toHaveText('Co się zmieni');
-  await expect(reader.locator('.content figcaption')).toHaveText('Ulica Długa po przebudowie');
+  await expect(reader.locator('.title')).toHaveText('A centre without cars');
+  await expect(reader.locator('.content')).toContainText('The city council adopted a resolution');
+  await expect(reader.locator('.content h2')).toHaveText('What will change');
+  await expect(reader.locator('.content figcaption')).toHaveText('Long Street after the rebuild');
 
-  // Nawigacja i stopka to nie tresc artykulu.
-  await expect(reader.locator('.content')).not.toContainText('Stopka serwisu');
+  // The navigation and the footer are not article content.
+  await expect(reader.locator('.content')).not.toContainText('The site footer');
 
-  // Ladunki z fixture'a nie przezyly sanityzacji.
+  // The fixture's payloads did not survive sanitization.
   await expect(reader.locator('.content script')).toHaveCount(0);
   await expect(reader.locator('.content a[href^="javascript:"]')).toHaveCount(0);
   await expect(reader.locator('.content [onerror]')).toHaveCount(0);
   expect(await reader.evaluate(() => (window as { __savelyXss?: string }).__savelyXss)).toBeUndefined();
 
-  // Pasek postepu i skroty dzialaja na prawdziwym ukladzie strony.
+  // The progress bar and the shortcuts work on a real page layout.
   await reader.keyboard.press('f');
   await expect(reader.locator('#favorite')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('ponowny zapis tego samego adresu nie dubluje pozycji', async ({ context, extensionId }) => {
+test('re-saving the same address does not duplicate the item', async ({ context, extensionId }) => {
   const article = await context.newPage();
   await article.goto(FIXTURE);
 

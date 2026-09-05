@@ -1,9 +1,9 @@
 /**
- * E2E: Chromium z zaladowanym rozszerzeniem (patrz tests/e2e/extension.ts).
+ * E2E: Chromium with the extension loaded (see tests/e2e/extension.ts).
  *
- * Firefoksa tu nie ma celowo - Playwright nie potrafi zaladowac tymczasowego
- * dodatku MV3 do Gecko. Strone Firefoksa pilnuja `web-ext lint` w CI
- * i `npm run start:firefox` przy pracy recznej.
+ * Firefox is deliberately absent - Playwright cannot load a temporary MV3
+ * add-on into Gecko. The Firefox side is guarded by `web-ext lint` in CI and by
+ * `npm run start:firefox` during manual work.
  */
 import { defineConfig } from '@playwright/test';
 
@@ -11,8 +11,8 @@ const PORT = Number(process.env['E2E_PORT'] ?? 5177);
 
 export default defineConfig({
   testDir: './tests/e2e',
-  // Rozszerzenie zyje w jednym, trwalym profilu - rownolegle karty tego samego
-  // profilu deptalyby sobie po IndexedDB.
+  // The extension lives in one persistent profile - parallel tabs of the same
+  // profile would trample each other's IndexedDB.
   workers: 1,
   fullyParallel: false,
   forbidOnly: Boolean(process.env['CI']),
@@ -28,7 +28,7 @@ export default defineConfig({
 
   webServer: {
     command: 'node tests/e2e/server.mjs',
-    url: `http://127.0.0.1:${String(PORT)}/artykul.html`,
+    url: `http://127.0.0.1:${String(PORT)}/article.html`,
     reuseExistingServer: process.env['CI'] === undefined,
     stdout: 'ignore',
   },

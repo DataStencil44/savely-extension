@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /**
- * Test czytnika na jsdom: montujemy prawdziwy `index.html`, uruchamiamy
- * `reader.ts` i sprawdzamy to, czego nie widać w testach jednostkowych -
- * że treść trafia do DOM-u po sanityzacji, podświetlenia się odtwarzają,
- * a ustawienia z `storage.sync` faktycznie zmieniają wygląd.
+ * A reader test on jsdom: we mount the real `index.html`, run `reader.ts` and
+ * check what the unit tests cannot see - that the content reaches the DOM after
+ * sanitization, that highlights are restored, and that settings from
+ * `storage.sync` really do change the appearance.
  */
 import 'fake-indexeddb/auto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
@@ -56,20 +56,20 @@ const settingsStore = vi.hoisted(() => {
 const { addHighlight, deleteDb, getItem, saveItem, setContent } = await import('@/lib/db');
 
 const ARTICLE = [
-  '<p>Rada miasta przyjela uchwale o zmianie organizacji ruchu w centrum.</p>',
-  '<figure><img src="https://cdn.example/ulica.jpg" alt="Ulica"><figcaption>Ulica po przebudowie</figcaption></figure>',
-  '<h2>Co sie zmieni</h2>',
-  '<p>Chodniki zostana poszerzone kosztem miejsc parkingowych wzdluz jezdni.</p>',
+  '<p>The city council adopted a resolution changing traffic patterns in the centre.</p>',
+  '<figure><img src="https://cdn.example/street.jpg" alt="A street"><figcaption>The street after the rebuild</figcaption></figure>',
+  '<h2>What will change</h2>',
+  '<p>The pavements will be widened at the expense of parking spaces along the roadway.</p>',
 ].join('');
 
 let itemId = '';
 
-/** Wysokość dokumentu i okna udajemy sami - jsdom nie liczy układu. */
+/** We fake the document and window height ourselves - jsdom computes no layout. */
 const PAGE_HEIGHT = 2_000;
 const VIEWPORT = 800;
 let scrollTop = 0;
 
-/** Przewija stronę do zadanej części treści i czeka na obsługę zdarzenia. */
+/** Scrolls the page to the given fraction of the content and waits for the handler. */
 async function scrollToRatio(ratio: number): Promise<void> {
   document.documentElement.scrollTop = ratio * (PAGE_HEIGHT - VIEWPORT);
   window.dispatchEvent(new Event('scroll'));
@@ -85,24 +85,24 @@ beforeAll(async () => {
   settingsStore['reader-settings'] = { theme: 'sepia', fontFamily: 'dyslexia', fontSize: 22 };
 
   const item = await saveItem({
-    url: 'https://gazeta.example/artykul',
-    title: 'Centrum bez samochodow',
+    url: 'https://daily.example/article',
+    title: 'A centre without cars',
     byline: 'Anna Kowalska',
     wordCount: 400,
     savedAt: 1_700_000_000_000,
   });
   itemId = item.id;
 
-  await setContent(item.id, { html: ARTICLE, text: 'nieistotne dla testu' });
+  await setContent(item.id, { html: ARTICLE, text: 'irrelevant for this test' });
 
-  // Podświetlenie zapisane wcześniej - offsety liczone z tekstu artykułu.
+  // A highlight stored earlier - the offsets come from the article text.
   await addHighlight({
     itemId: item.id,
-    text: 'organizacji ruchu',
+    text: 'traffic patterns',
     start: 45,
-    end: 62,
-    prefix: 'uchwale o zmianie ',
-    suffix: ' w centrum.',
+    end: 61,
+    prefix: 'a resolution changing ',
+    suffix: ' in the centre.',
   });
 
   const root = document.documentElement;
@@ -126,28 +126,28 @@ beforeAll(async () => {
   await new Promise((resolve) => setTimeout(resolve, 200));
 });
 
-describe('czytnik', () => {
-  it('pokazuje nagłówek z metadanymi', () => {
-    expect(document.querySelector('.title')?.textContent).toBe('Centrum bez samochodow');
+describe('the reader', () => {
+  it('shows the header with the metadata', () => {
+    expect(document.querySelector('.title')?.textContent).toBe('A centre without cars');
     expect(document.querySelector('.meta')?.textContent).toContain('Anna Kowalska');
-    expect(document.querySelector('.meta')?.textContent).toContain('gazeta.example');
+    expect(document.querySelector('.meta')?.textContent).toContain('daily.example');
   });
 
-  it('wstawia treść po sanityzacji, z podpisem pod figure', () => {
+  it('inserts the content after sanitization, with the figure caption', () => {
     const content = document.querySelector('.content');
     expect(content?.querySelectorAll('p')).toHaveLength(2);
-    expect(content?.querySelector('h2')?.textContent).toBe('Co sie zmieni');
-    expect(content?.querySelector('figcaption')?.textContent).toBe('Ulica po przebudowie');
+    expect(content?.querySelector('h2')?.textContent).toBe('What will change');
+    expect(content?.querySelector('figcaption')?.textContent).toBe('The street after the rebuild');
     expect(content?.querySelector('script')).toBeNull();
   });
 
-  it('odtwarza zapisane podświetlenie z offsetów tekstowych', () => {
+  it('restores a stored highlight from its text offsets', () => {
     const mark = document.querySelector('mark[data-highlight]');
     expect(mark).not.toBeNull();
-    expect(mark?.textContent).toBe('organizacji ruchu');
+    expect(mark?.textContent).toBe('traffic patterns');
   });
 
-  it('stosuje ustawienia z storage.sync', () => {
+  it('applies the settings from storage.sync', () => {
     const root = document.documentElement;
     expect(root.dataset['theme']).toBe('sepia');
     expect(root.dataset['family']).toBe('dyslexia');
@@ -155,7 +155,7 @@ describe('czytnik', () => {
     expect(root.style.getPropertyValue('--column-width')).toBe('68ch');
   });
 
-  it('zmiana rozmiaru zapisuje się i od razu działa', async () => {
+  it('a size change is saved and takes effect immediately', async () => {
     document.querySelector<HTMLButtonElement>('[data-font-size="1"]')?.click();
     await new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -163,12 +163,12 @@ describe('czytnik', () => {
     expect(settingsStore['reader-settings']).toMatchObject({ fontSize: 23 });
   });
 
-  it('wyłączenie obrazków zdalnych zdejmuje src i daje się cofnąć', async () => {
+  it('turning off remote images strips src and can be undone', async () => {
     const image = document.querySelector<HTMLImageElement>('.content img');
-    expect(image?.getAttribute('src')).toBe('https://cdn.example/ulica.jpg');
+    expect(image?.getAttribute('src')).toBe('https://cdn.example/street.jpg');
 
     const checkbox = document.querySelector<HTMLInputElement>('#remote-images');
-    if (checkbox === null) throw new Error('brak przełącznika obrazków');
+    if (checkbox === null) throw new Error('no remote-images toggle');
 
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
@@ -182,10 +182,10 @@ describe('czytnik', () => {
     checkbox.dispatchEvent(new Event('change'));
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(image?.getAttribute('src')).toBe('https://cdn.example/ulica.jpg');
+    expect(image?.getAttribute('src')).toBe('https://cdn.example/street.jpg');
   });
 
-  it('oznacza jako przeczytane dopiero po dotarciu do 90% treści', async () => {
+  it('marks as read only after reaching 90% of the content', async () => {
     await scrollToRatio(0.5);
     expect(document.querySelector<HTMLElement>('#progress-bar')?.style.width).toBe('50%');
     expect((await getItem(itemId))?.readAt).toBeNull();
@@ -195,7 +195,7 @@ describe('czytnik', () => {
     expect((await getItem(itemId))?.readAt).not.toBeNull();
   });
 
-  it('skrót f przełącza ulubione', async () => {
+  it('the f shortcut toggles the favorite', async () => {
     const favorite = document.querySelector<HTMLButtonElement>('#favorite');
     expect(favorite?.getAttribute('aria-pressed')).toBe('false');
 

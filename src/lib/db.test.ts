@@ -1,8 +1,9 @@
 /**
- * Testy warstwy przechowywania na `fake-indexeddb`.
+ * Storage-layer tests on `fake-indexeddb`.
  *
- * Kazdy test dostaje czysta baze (`deleteDb` w `beforeEach`), bo modul trzyma
- * wspoldzielone polaczenie i inaczej wersje/dane przeciekalyby miedzy testami.
+ * Every test gets a clean database (`deleteDb` in `beforeEach`), because the
+ * module keeps a shared connection and versions/data would otherwise leak
+ * between tests.
  */
 import 'fake-indexeddb/auto';
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
@@ -48,7 +49,7 @@ afterEach(async () => {
 });
 
 describe('normalizeUrl', () => {
-  it('wycina parametry sledzace', () => {
+  it('strips tracking parameters', () => {
     expect(normalizeUrl('https://example.com/a?utm_source=x&utm_medium=y&id=7')).toBe(
       'https://example.com/a?id=7',
     );
@@ -57,23 +58,23 @@ describe('normalizeUrl', () => {
     expect(normalizeUrl('https://example.com/a?ref=newsletter')).toBe('https://example.com/a');
   });
 
-  it('zostawia parametry, ktore identyfikuja tresc, i fragment', () => {
-    expect(normalizeUrl('https://example.com/?p=123&utm_campaign=q#rozdzial-2')).toBe(
-      'https://example.com/?p=123#rozdzial-2',
+  it('keeps parameters that identify the content, and the fragment', () => {
+    expect(normalizeUrl('https://example.com/?p=123&utm_campaign=q#chapter-2')).toBe(
+      'https://example.com/?p=123#chapter-2',
     );
   });
 
-  it('nie zostawia osieroconego znaku zapytania', () => {
+  it('leaves no orphaned question mark', () => {
     expect(normalizeUrl('https://example.com/a?utm_source=x')).toBe('https://example.com/a');
   });
 
-  it('adres nie do sparsowania wraca bez zmian', () => {
-    expect(normalizeUrl('  nie-jest-urlem  ')).toBe('nie-jest-urlem');
+  it('an unparseable address comes back unchanged', () => {
+    expect(normalizeUrl('  not-a-url  ')).toBe('not-a-url');
   });
 });
 
 describe('normalizeTags', () => {
-  it('przycina, obniza wielkosc liter, odsiewa duplikaty i sortuje', () => {
+  it('trims, lowercases, drops duplicates and sorts', () => {
     expect(normalizeTags([' Rust ', 'rust', 'TypeScript', '', '   '])).toEqual([
       'rust',
       'typescript',
@@ -82,16 +83,16 @@ describe('normalizeTags', () => {
 });
 
 describe('saveItem', () => {
-  it('tworzy pozycje z domyslnymi wartosciami', async () => {
+  it('creates an item with the default values', async () => {
     const item = await saveItem({
-      url: 'https://example.com/artykul',
-      title: 'Artykul',
+      url: 'https://example.com/article',
+      title: 'An article',
       wordCount: 400,
     });
 
     expect(item.id).toMatch(/^[0-9a-f-]{36}$/i);
-    expect(item.url).toBe('https://example.com/artykul');
-    expect(item.resolvedUrl).toBe('https://example.com/artykul');
+    expect(item.url).toBe('https://example.com/article');
+    expect(item.resolvedUrl).toBe('https://example.com/article');
     expect(item.status).toBe('pending');
     expect(item.archived).toBe(false);
     expect(item.favorite).toBe(false);
@@ -103,27 +104,27 @@ describe('saveItem', () => {
     await expect(getItem(item.id)).resolves.toEqual(item);
   });
 
-  it('zapisuje adres znormalizowany, ale zachowuje oryginal', async () => {
+  it('stores the normalized address but keeps the original', async () => {
     const item = await saveItem({ url: 'https://example.com/a?utm_source=newsletter&id=7' });
 
     expect(item.url).toBe('https://example.com/a?id=7');
     expect(item.resolvedUrl).toBe('https://example.com/a?utm_source=newsletter&id=7');
   });
 
-  it('przy przekierowaniu deduplikuje po adresie docelowym', async () => {
+  it('on a redirect it deduplicates by the destination address', async () => {
     const item = await saveItem({
-      url: 'https://skracacz.example/xyz',
-      resolvedUrl: 'https://example.com/cel',
+      url: 'https://shortener.example/xyz',
+      resolvedUrl: 'https://example.com/target',
     });
 
-    expect(item.url).toBe('https://example.com/cel');
-    expect(item.resolvedUrl).toBe('https://example.com/cel');
+    expect(item.url).toBe('https://example.com/target');
+    expect(item.resolvedUrl).toBe('https://example.com/target');
   });
 
-  it('ten sam adres nie tworzy duplikatu, tylko odswieza wpis', async () => {
+  it('the same address creates no duplicate, it refreshes the entry', async () => {
     const first = await saveItem({
       url: 'https://example.com/a',
-      title: 'Stary tytul',
+      title: 'Old title',
       tags: ['rust'],
       savedAt: 1_000,
       wordCount: 100,
@@ -132,7 +133,7 @@ describe('saveItem', () => {
 
     const second = await saveItem({
       url: 'https://example.com/a?utm_source=twitter&fbclid=abc',
-      title: 'Nowy tytul',
+      title: 'New title',
       tags: ['TypeScript'],
       savedAt: 5_000,
       wordCount: 800,
@@ -141,20 +142,20 @@ describe('saveItem', () => {
     expect(second.id).toBe(first.id);
     await expect(countItems()).resolves.toBe(1);
 
-    // metadane odswiezone
-    expect(second.title).toBe('Nowy tytul');
+    // the metadata is refreshed
+    expect(second.title).toBe('New title');
     expect(second.wordCount).toBe(800);
     expect(second.estReadingMinutes).toBe(4);
     expect(second.savedAt).toBe(5_000);
 
-    // stan uzytkownika nietkniety, tagi zsumowane
+    // the user state is untouched, the tags are unioned
     expect(second.favorite).toBe(true);
     expect(second.archived).toBe(true);
     expect(second.readAt).toBe(2_000);
     expect(second.tags).toEqual(['rust', 'typescript']);
   });
 
-  it('getItemByUrl znajduje pozycje mimo parametrow sledzacych', async () => {
+  it('getItemByUrl finds the item despite tracking parameters', async () => {
     const saved = await saveItem({ url: 'https://example.com/a' });
     const found = await getItemByUrl('https://example.com/a?utm_campaign=x');
 
@@ -163,14 +164,14 @@ describe('saveItem', () => {
 });
 
 describe('listItems', () => {
-  /** Cztery pozycje o rosnacym `savedAt`, zeby kolejnosc byla deterministyczna. */
+  /** Four items with increasing `savedAt`, so the order is deterministic. */
   async function seed(): Promise<SavedItem[]> {
     const items: SavedItem[] = [];
     for (let i = 1; i <= 4; i += 1) {
       items.push(
         await saveItem({
           url: `https://example.com/${i}`,
-          title: `Artykul ${i}`,
+          title: `Article ${i}`,
           savedAt: i * 1_000,
           tags: i % 2 === 0 ? ['rust'] : ['rust', 'web'],
         }),
@@ -179,32 +180,32 @@ describe('listItems', () => {
     return items;
   }
 
-  it('domyslnie sortuje od najnowszych', async () => {
+  it('sorts newest-first by default', async () => {
     await seed();
     const page = await listItems();
 
     expect(page.items.map((item) => item.title)).toEqual([
-      'Artykul 4',
-      'Artykul 3',
-      'Artykul 2',
-      'Artykul 1',
+      'Article 4',
+      'Article 3',
+      'Article 2',
+      'Article 1',
     ]);
     expect(page.nextCursor).toBeNull();
   });
 
-  it('sortuje od najstarszych', async () => {
+  it('sorts oldest-first', async () => {
     await seed();
     const page = await listItems({ sort: 'oldest' });
 
     expect(page.items.map((item) => item.title)).toEqual([
-      'Artykul 1',
-      'Artykul 2',
-      'Artykul 3',
-      'Artykul 4',
+      'Article 1',
+      'Article 2',
+      'Article 3',
+      'Article 4',
     ]);
   });
 
-  it('stronicuje kursorem bez gubienia i powtarzania pozycji', async () => {
+  it('paginates by cursor without losing or repeating items', async () => {
     await seed();
 
     const seen: string[] = [];
@@ -218,14 +219,14 @@ describe('listItems', () => {
       pages += 1;
     } while (cursor !== null && pages < 10);
 
-    expect(seen).toEqual(['Artykul 4', 'Artykul 3', 'Artykul 2', 'Artykul 1']);
+    expect(seen).toEqual(['Article 4', 'Article 3', 'Article 2', 'Article 1']);
     expect(new Set(seen).size).toBe(4);
     expect(pages).toBe(2);
   });
 
-  it('stronicuje poprawnie takze przy identycznym savedAt', async () => {
+  it('paginates correctly even with identical savedAt', async () => {
     for (let i = 1; i <= 3; i += 1) {
-      await saveItem({ url: `https://example.com/rowne-${i}`, savedAt: 7_000 });
+      await saveItem({ url: `https://example.com/equal-${i}`, savedAt: 7_000 });
     }
 
     const seen: string[] = [];
@@ -242,10 +243,10 @@ describe('listItems', () => {
     expect(new Set(seen).size).toBe(3);
   });
 
-  it('filtruje po stanie pozycji', async () => {
+  it('filters by item state', async () => {
     const items = await seed();
     const [first, second] = items;
-    if (first === undefined || second === undefined) throw new Error('brak danych testowych');
+    if (first === undefined || second === undefined) throw new Error('missing test data');
 
     await updateItem(first.id, { archived: true });
     await updateItem(second.id, { favorite: true, readAt: 9_000 });
@@ -267,7 +268,7 @@ describe('listItems', () => {
     ).resolves.toBe(4);
   });
 
-  it('filtruje po tagach koniunkcyjnie', async () => {
+  it('filters by tags as a conjunction', async () => {
     await seed();
 
     await expect(listItems({ filter: { tags: ['rust'] } }).then((p) => p.items.length)).resolves.toBe(
@@ -280,20 +281,20 @@ describe('listItems', () => {
       listItems({ filter: { tags: ['rust', 'web'] } }).then((p) => p.items.length),
     ).resolves.toBe(2);
     await expect(
-      listItems({ filter: { tags: ['rust', 'nie-ma'] } }).then((p) => p.items.length),
+      listItems({ filter: { tags: ['rust', 'missing'] } }).then((p) => p.items.length),
     ).resolves.toBe(0);
   });
 });
 
 describe('updateItem', () => {
-  it('nadpisuje pola i utrzymuje klucz indeksu `archived`', async () => {
+  it('overwrites fields and maintains the `archived` index key', async () => {
     const item = await saveItem({ url: 'https://example.com/a', title: 'A' });
     const updated = await updateItem(item.id, { archived: true, tags: [' Rust ', 'rust'] });
 
     expect(updated.archived).toBe(true);
     expect(updated.archivedKey).toBe(1);
     expect(updated.tags).toEqual(['rust']);
-    // Zapytanie po indeksie potwierdza, ze klucz faktycznie sie zaktualizowal.
+    // Querying the index confirms the key really was updated.
     await expect(countItems({ archived: true })).resolves.toBe(1);
 
     const back = await updateItem(item.id, { archived: false });
@@ -301,21 +302,21 @@ describe('updateItem', () => {
     await expect(countItems({ archived: true })).resolves.toBe(0);
   });
 
-  it('rzuca dla nieznanego id', async () => {
-    await expect(updateItem('nie-ma-takiego', { favorite: true })).rejects.toThrow(/Nie ma pozycji/);
+  it('throws for an unknown id', async () => {
+    await expect(updateItem('no-such-id', { favorite: true })).rejects.toThrow(/no item/);
   });
 });
 
 describe('deleteItem', () => {
-  it('kasuje pozycje razem z trescia i zaznaczeniami', async () => {
+  it('deletes the item together with its content and highlights', async () => {
     const item = await saveItem({ url: 'https://example.com/a' });
     const other = await saveItem({ url: 'https://example.com/b' });
 
-    await setContent(item.id, { html: '<p>tresc</p>', text: 'tresc' });
-    await addHighlight({ itemId: item.id, text: 'raz', start: 0, end: 3 });
-    await addHighlight({ itemId: item.id, text: 'dwa', start: 4, end: 7 });
-    await setContent(other.id, { html: '<p>inna</p>', text: 'inna' });
-    await addHighlight({ itemId: other.id, text: 'obce', start: 0, end: 4 });
+    await setContent(item.id, { html: '<p>content</p>', text: 'content' });
+    await addHighlight({ itemId: item.id, text: 'one', start: 0, end: 3 });
+    await addHighlight({ itemId: item.id, text: 'two', start: 4, end: 7 });
+    await setContent(other.id, { html: '<p>other</p>', text: 'other' });
+    await addHighlight({ itemId: other.id, text: 'alien', start: 0, end: 5 });
 
     await expect(deleteItem(item.id)).resolves.toBe(true);
 
@@ -323,31 +324,31 @@ describe('deleteItem', () => {
     await expect(getContent(item.id)).resolves.toBeUndefined();
     await expect(listHighlights(item.id)).resolves.toEqual([]);
 
-    // Sasiednia pozycja nietknieta.
+    // The neighbouring item is untouched.
     await expect(getContent(other.id)).resolves.toBeDefined();
     await expect(listHighlights(other.id)).resolves.toHaveLength(1);
   });
 
-  it('zwraca false, gdy nie bylo czego kasowac', async () => {
-    await expect(deleteItem('nie-ma-takiego')).resolves.toBe(false);
+  it('returns false when there was nothing to delete', async () => {
+    await expect(deleteItem('no-such-id')).resolves.toBe(false);
   });
 });
 
 describe('contents', () => {
-  it('zapisuje tresc i w tej samej transakcji oznacza pozycje jako ready', async () => {
+  it('stores the content and marks the item ready in the same transaction', async () => {
     const item = await saveItem({ url: 'https://example.com/a' });
     expect(item.status).toBe('pending');
 
     const content = await setContent(item.id, {
-      html: '<p>oczyszczony</p>',
-      text: 'oczyszczony',
+      html: '<p>sanitized</p>',
+      text: 'sanitized',
       contentHash: 'sha256-abc',
     });
 
     expect(content.itemId).toBe(item.id);
     await expect(getContent(item.id)).resolves.toMatchObject({
-      html: '<p>oczyszczony</p>',
-      text: 'oczyszczony',
+      html: '<p>sanitized</p>',
+      text: 'sanitized',
     });
 
     const refreshed = await getItem(item.id);
@@ -355,38 +356,38 @@ describe('contents', () => {
     expect(refreshed?.contentHash).toBe('sha256-abc');
   });
 
-  it('nie zapisuje tresci dla nieznanej pozycji', async () => {
-    await expect(setContent('nie-ma-takiego', { html: '', text: '' })).rejects.toThrow(
-      /Nie ma pozycji/,
+  it('does not store content for an unknown item', async () => {
+    await expect(setContent('no-such-id', { html: '', text: '' })).rejects.toThrow(
+      /no item/,
     );
-    await expect(getContent('nie-ma-takiego')).resolves.toBeUndefined();
+    await expect(getContent('no-such-id')).resolves.toBeUndefined();
   });
 });
 
 describe('highlights', () => {
-  it('dodaje i zwraca zaznaczenia po itemId, w kolejnosci dodania', async () => {
+  it('adds and returns highlights by itemId, in insertion order', async () => {
     const item = await saveItem({ url: 'https://example.com/a' });
     const other = await saveItem({ url: 'https://example.com/b' });
 
-    await addHighlight({ itemId: item.id, text: 'drugie', createdAt: 200, start: 10, end: 16 });
-    await addHighlight({ itemId: item.id, text: 'pierwsze', createdAt: 100, note: 'notatka', start: 0, end: 8 });
-    await addHighlight({ itemId: other.id, text: 'obce', createdAt: 150, start: 0, end: 4 });
+    await addHighlight({ itemId: item.id, text: 'second', createdAt: 200, start: 10, end: 16 });
+    await addHighlight({ itemId: item.id, text: 'first', createdAt: 100, note: 'a note', start: 0, end: 8 });
+    await addHighlight({ itemId: other.id, text: 'alien', createdAt: 150, start: 0, end: 5 });
 
     const highlights = await listHighlights(item.id);
-    expect(highlights.map((h) => h.text)).toEqual(['pierwsze', 'drugie']);
-    expect(highlights[0]?.note).toBe('notatka');
+    expect(highlights.map((h) => h.text)).toEqual(['first', 'second']);
+    expect(highlights[0]?.note).toBe('a note');
     expect(highlights[1]?.note).toBeNull();
   });
 
-  it('nie dodaje zaznaczenia do nieznanej pozycji', async () => {
-    await expect(addHighlight({ itemId: 'nie-ma-takiego', text: 'x', start: 0, end: 1 })).rejects.toThrow(
-      /Nie ma pozycji/,
+  it('does not add a highlight to an unknown item', async () => {
+    await expect(addHighlight({ itemId: 'no-such-id', text: 'x', start: 0, end: 1 })).rejects.toThrow(
+      /no item/,
     );
   });
 });
 
 describe('countItems', () => {
-  it('liczy calosc, stan i tagi', async () => {
+  it('counts totals, state and tags', async () => {
     const a = await saveItem({ url: 'https://example.com/a', tags: ['rust'] });
     await saveItem({ url: 'https://example.com/b', tags: ['rust', 'web'] });
     await saveItem({ url: 'https://example.com/c' });
@@ -401,8 +402,8 @@ describe('countItems', () => {
   });
 });
 
-describe('migracje', () => {
-  /** Rekord w ksztalcie sprzed wersji 2 - typy opisuja terazniejszosc, nie historie. */
+describe('migrations', () => {
+  /** A record shaped as before version 2 - the types describe the present, not history. */
   function withoutFields<T extends Record<string, unknown>>(value: T, fields: readonly string[]): T {
     const record: Record<string, unknown> = { ...value };
     for (const field of fields) delete record[field];
@@ -415,10 +416,10 @@ describe('migracje', () => {
       url: `https://example.com/${id}`,
       resolvedUrl: `https://example.com/${id}`,
       title,
-      excerpt: 'zajawka',
+      excerpt: 'an excerpt',
       byline: null,
       siteName: null,
-      lang: 'pl',
+      lang: 'en',
       wordCount: 100,
       estReadingMinutes: 1,
       savedAt: 1_000,
@@ -434,10 +435,10 @@ describe('migracje', () => {
     };
   }
 
-  it('realna migracja 1 -> 2 doklada pola i nie rusza danych', async () => {
-    // --- baza w wersji 1, rekordy bez pol z wersji 2 ---
+  it('a real 1 -> 2 migration adds fields and leaves the data alone', async () => {
+    // --- a version 1 database, records without the version 2 fields ---
     const v1 = await openDb({ version: 1 });
-    const item = sampleItem('stary-1', 'Pierwszy');
+    const item = sampleItem('old-1', 'First');
     await v1.put('items', withoutFields({ ...item }, ['readingProgress']));
     await v1.put('contents', { itemId: item.id, html: '<p>x</p>', text: 'x', updatedAt: 5 });
     await v1.put(
@@ -446,8 +447,8 @@ describe('migracje', () => {
         {
           id: 'h1',
           itemId: item.id,
-          text: 'cytat',
-          note: 'notatka',
+          text: 'a quote',
+          note: 'a note',
           createdAt: 7,
           start: 0,
           end: 0,
@@ -459,10 +460,10 @@ describe('migracje', () => {
     );
     v1.close();
 
-    // --- pierwsze uzycie API podnosi wersje do 2 ---
+    // --- the first use of the API raises the version to 2 ---
     const migrated = await getItem(item.id);
     expect(migrated?.readingProgress).toBe(0);
-    expect(migrated?.title).toBe('Pierwszy');
+    expect(migrated?.title).toBe('First');
     expect(migrated?.favorite).toBe(true);
     expect(migrated?.tags).toEqual(['rust']);
     expect(migrated?.contentHash).toBe('sha256-a');
@@ -470,35 +471,35 @@ describe('migracje', () => {
     await expect(getContent(item.id)).resolves.toMatchObject({ text: 'x' });
 
     const [highlight] = await listHighlights(item.id);
-    expect(highlight).toMatchObject({ text: 'cytat', note: 'notatka', start: 0, end: 0, prefix: '' });
+    expect(highlight).toMatchObject({ text: 'a quote', note: 'a note', start: 0, end: 0, prefix: '' });
   });
 
-  /** Sztuczna wersja 5: dokladamy pole do kazdej pozycji, nic nie kasujac. */
+  /** A synthetic version 5: we add a field to every item, deleting nothing. */
   const addFlag: Migration = async (_db, tx) => {
     const store = tx.objectStore('items');
     let cursor = await store.openCursor();
     while (cursor !== null) {
-      const migrated = { ...cursor.value, przypiete: false };
+      const migrated = { ...cursor.value, pinned: false };
       await cursor.update(migrated);
       cursor = await cursor.continue();
     }
   };
 
-  it('podniesienie wersji 4 -> 5 doklada pole i nie kasuje danych', async () => {
+  it('raising the version 4 -> 5 adds a field and deletes no data', async () => {
     const first = await saveItem({
       url: 'https://example.com/a',
-      title: 'Pierwszy',
+      title: 'First',
       tags: ['rust'],
       savedAt: 1_000,
     });
     const second = await saveItem({
       url: 'https://example.com/b',
-      title: 'Drugi',
+      title: 'Second',
       savedAt: 2_000,
     });
     await updateItem(second.id, { archived: true, favorite: true, readAt: 3_000 });
-    await setContent(first.id, { html: '<p>tresc</p>', text: 'tresc', contentHash: 'sha256-a' });
-    await addHighlight({ itemId: first.id, text: 'zaznaczenie', createdAt: 500, start: 2, end: 13 });
+    await setContent(first.id, { html: '<p>content</p>', text: 'content', contentHash: 'sha256-a' });
+    await addHighlight({ itemId: first.id, text: 'a highlight', createdAt: 500, start: 2, end: 13 });
 
     await closeDb();
 
@@ -514,23 +515,23 @@ describe('migracje', () => {
         'tombstones',
       ]);
 
-      const items = (await db.getAll('items')) as (SavedItem & { przypiete?: boolean })[];
+      const items = (await db.getAll('items')) as (SavedItem & { pinned?: boolean })[];
       expect(items).toHaveLength(2);
 
       const migratedFirst = items.find((entry) => entry.id === first.id);
       const migratedSecond = items.find((entry) => entry.id === second.id);
 
-      expect(migratedFirst?.przypiete).toBe(false);
-      expect(migratedSecond?.przypiete).toBe(false);
+      expect(migratedFirst?.pinned).toBe(false);
+      expect(migratedSecond?.pinned).toBe(false);
 
-      expect(migratedFirst?.title).toBe('Pierwszy');
+      expect(migratedFirst?.title).toBe('First');
       expect(migratedFirst?.tags).toEqual(['rust']);
       expect(migratedFirst?.status).toBe('ready');
       expect(migratedFirst?.readingProgress).toBe(0);
       expect(migratedSecond?.archived).toBe(true);
       expect(migratedSecond?.readAt).toBe(3_000);
 
-      await expect(db.get('contents', first.id)).resolves.toMatchObject({ text: 'tresc' });
+      await expect(db.get('contents', first.id)).resolves.toMatchObject({ text: 'content' });
       const highlights = await db.getAllFromIndex('highlights', 'itemId', first.id);
       expect(highlights).toHaveLength(1);
       expect(highlights[0]).toMatchObject({ start: 2, end: 13 });
@@ -545,23 +546,23 @@ describe('migracje', () => {
     }
   });
 
-  it('brak migracji do zadanej wersji przerywa upgrade zamiast psuc schemat', async () => {
-    await saveItem({ url: 'https://example.com/a', title: 'Zostaje' });
+  it('a missing migration aborts the upgrade instead of breaking the schema', async () => {
+    await saveItem({ url: 'https://example.com/a', title: 'Stays' });
     await closeDb();
 
     await expect(openDb({ version: 5, migrations: {} })).rejects.toThrow();
 
-    // Dane wciaz na miejscu.
+    // The data is still in place.
     await expect(countItems()).resolves.toBe(1);
   });
 });
 
 describe('exportAll', () => {
-  it('oddaje spojny zrzut trzech magazynow, najnowsze pozycje pierwsze', async () => {
-    const stary = await saveItem({ url: 'https://a.example/1', savedAt: 1_000 });
-    const nowy = await saveItem({ url: 'https://b.example/2', savedAt: 2_000 });
-    await setContent(stary.id, { html: '<p>a</p>', text: 'a' });
-    await addHighlight({ itemId: nowy.id, text: 'cytat', start: 0, end: 5 });
+  it('returns a consistent dump of three stores, newest items first', async () => {
+    const older = await saveItem({ url: 'https://a.example/1', savedAt: 1_000 });
+    const newer = await saveItem({ url: 'https://b.example/2', savedAt: 2_000 });
+    await setContent(older.id, { html: '<p>a</p>', text: 'a' });
+    await addHighlight({ itemId: newer.id, text: 'a quote', start: 0, end: 7 });
 
     const dump = await exportAll();
 
@@ -573,7 +574,7 @@ describe('exportAll', () => {
     expect(dump.highlights).toHaveLength(1);
   });
 
-  it('listAllItems daje same metadane, bez tresci', async () => {
+  it('listAllItems gives metadata only, without content', async () => {
     const item = await saveItem({ url: 'https://a.example/1' });
     await setContent(item.id, { html: '<p>a</p>', text: 'a' });
 
@@ -584,13 +585,13 @@ describe('exportAll', () => {
 });
 
 describe('importDump', () => {
-  /** Minimalna pozycja w ksztalcie rekordu z pliku kopii. */
+  /** A minimal item shaped like a record from a backup file. */
   function record(url: string, overrides: Partial<SavedItem> = {}): SavedItem {
     return {
-      id: `plik-${url}`,
+      id: `file-${url}`,
       url: normalizeUrl(url),
       resolvedUrl: url,
-      title: 'Z pliku',
+      title: 'From the file',
       excerpt: '',
       byline: null,
       siteName: null,
@@ -611,21 +612,21 @@ describe('importDump', () => {
     };
   }
 
-  it('dodaje nowe pozycje razem z trescia i zaznaczeniami', async () => {
+  it('adds new items together with their content and highlights', async () => {
     const outcome = await importDump({
       items: [record('https://a.example/1')],
       contents: [
-        { itemId: 'plik-https://a.example/1', html: '<p>a</p>', text: 'a', updatedAt: 1_000 },
+        { itemId: 'file-https://a.example/1', html: '<p>a</p>', text: 'a', updatedAt: 1_000 },
       ],
       highlights: [
         {
           id: 'h1',
-          itemId: 'plik-https://a.example/1',
-          text: 'cytat',
+          itemId: 'file-https://a.example/1',
+          text: 'a quote',
           note: null,
           createdAt: 1_000,
           start: 0,
-          end: 5,
+          end: 7,
           prefix: '',
           suffix: '',
         },
@@ -640,28 +641,28 @@ describe('importDump', () => {
     expect(await listHighlights(item?.id ?? '')).toHaveLength(1);
   });
 
-  it('scala po znormalizowanym adresie zamiast dublowac', async () => {
-    await saveItem({ url: 'https://a.example/1?utm_source=nl', tags: ['lokalny'] });
+  it('merges by normalized address instead of duplicating', async () => {
+    await saveItem({ url: 'https://a.example/1?utm_source=nl', tags: ['local'] });
 
     const outcome = await importDump({
-      items: [record('https://a.example/1', { tags: ['z-pliku'] })],
+      items: [record('https://a.example/1', { tags: ['from-file'] })],
       contents: [],
       highlights: [],
     });
 
     expect(outcome).toMatchObject({ added: 0, merged: 1 });
     expect(await countItems()).toBe(1);
-    expect((await getItemByUrl('https://a.example/1'))?.tags).toEqual(['lokalny', 'z-pliku']);
+    expect((await getItemByUrl('https://a.example/1'))?.tags).toEqual(['from-file', 'local']);
   });
 
-  it('scalanie doklada, ale nie odbiera stanu uzytkownika', async () => {
-    const local = await saveItem({ url: 'https://a.example/1', title: 'Lokalny tytul' });
+  it('a merge adds but never takes away user state', async () => {
+    const local = await saveItem({ url: 'https://a.example/1', title: 'Local title' });
     await updateItem(local.id, { archived: true, readAt: 5_000 });
 
     await importDump({
       items: [
         record('https://a.example/1', {
-          title: 'Tytul z pliku',
+          title: 'Title from the file',
           archived: false,
           favorite: true,
           readAt: null,
@@ -673,47 +674,47 @@ describe('importDump', () => {
     });
 
     const merged = await getItem(local.id);
-    // Stan po tej stronie zostaje, plik dorzuca tylko to, czego brakowalo.
+    // The state on this side stays; the file only adds what was missing.
     expect(merged?.archived).toBe(true);
     expect(merged?.readAt).toBe(5_000);
-    expect(merged?.title).toBe('Lokalny tytul');
+    expect(merged?.title).toBe('Local title');
     expect(merged?.favorite).toBe(true);
     expect(merged?.savedAt).toBe(500);
   });
 
-  it('nie nadpisuje tresci, ktora juz mamy, i liczy to jako pominiete', async () => {
+  it('does not overwrite content we already have, and counts it as skipped', async () => {
     const local = await saveItem({ url: 'https://a.example/1' });
-    await setContent(local.id, { html: '<p>lokalna</p>', text: 'lokalna' });
+    await setContent(local.id, { html: '<p>local</p>', text: 'local' });
 
     const outcome = await importDump({
       items: [record('https://a.example/1')],
       contents: [
-        { itemId: 'plik-https://a.example/1', html: '<p>z pliku</p>', text: 'x', updatedAt: 9_000 },
+        { itemId: 'file-https://a.example/1', html: '<p>from the file</p>', text: 'x', updatedAt: 9_000 },
       ],
       highlights: [],
     });
 
     expect(outcome.contents).toBe(0);
     expect(outcome.skipped).toBe(1);
-    expect((await getContent(local.id))?.html).toBe('<p>lokalna</p>');
+    expect((await getContent(local.id))?.html).toBe('<p>local</p>');
   });
 
-  it('nie dubluje zaznaczen o tym samym cytacie i offsetach', async () => {
+  it('does not duplicate highlights with the same quote and offsets', async () => {
     const local = await saveItem({ url: 'https://a.example/1' });
-    await addHighlight({ itemId: local.id, text: 'cytat', start: 0, end: 5 });
+    await addHighlight({ itemId: local.id, text: 'a quote', start: 0, end: 7 });
 
     const outcome = await importDump({
       items: [record('https://a.example/1')],
       contents: [],
       highlights: [
         {
-          id: 'inne-id',
-          itemId: 'plik-https://a.example/1',
-          text: 'cytat',
+          id: 'another-id',
+          itemId: 'file-https://a.example/1',
+          text: 'a quote',
           note: null,
           createdAt: 1_000,
           start: 0,
-          end: 5,
+          end: 7,
           prefix: '',
           suffix: '',
         },
@@ -725,29 +726,29 @@ describe('importDump', () => {
     expect(await listHighlights(local.id)).toHaveLength(1);
   });
 
-  it('kolizja identyfikatora nie nadpisuje cudzej pozycji', async () => {
-    const local = await saveItem({ url: 'https://a.example/stary' });
+  it('an identifier collision does not overwrite another item', async () => {
+    const local = await saveItem({ url: 'https://a.example/old' });
 
     await importDump({
-      items: [record('https://b.example/nowy', { id: local.id })],
+      items: [record('https://b.example/new', { id: local.id })],
       contents: [],
       highlights: [],
     });
 
     expect(await countItems()).toBe(2);
-    expect((await getItem(local.id))?.url).toBe('https://a.example/stary');
-    expect(await getItemByUrl('https://b.example/nowy')).toBeDefined();
+    expect((await getItem(local.id))?.url).toBe('https://a.example/old');
+    expect(await getItemByUrl('https://b.example/new')).toBeDefined();
   });
 
-  it('blad w polowie nie zostawia polowy importu', async () => {
-    // Rekord z polem, ktorego strukturalny klon nie przepusci - transakcja
-    // musi sie wycofac razem z pozycjami zapisanymi przed nim.
-    const trefny = record('https://c.example/3') as SavedItem & { zly?: unknown };
-    trefny.zly = () => undefined;
+  it('a failure halfway leaves no half-import behind', async () => {
+    // A record with a field the structured clone will not accept - the
+    // transaction has to roll back together with the items written before it.
+    const poisoned = record('https://c.example/3') as SavedItem & { bad?: unknown };
+    poisoned.bad = () => undefined;
 
     await expect(
       importDump({
-        items: [record('https://a.example/1'), record('https://b.example/2'), trefny],
+        items: [record('https://a.example/1'), record('https://b.example/2'), poisoned],
         contents: [],
         highlights: [],
       }),
@@ -758,7 +759,7 @@ describe('importDump', () => {
 });
 
 describe('snapshots', () => {
-  it('kopiuja metadane i trzymaja tylko ostatnie SNAPSHOT_LIMIT', async () => {
+  it('copy the metadata and keep only the last SNAPSHOT_LIMIT', async () => {
     await saveItem({ url: 'https://a.example/1' });
 
     for (let i = 0; i < SNAPSHOT_LIMIT + 2; i += 1) {
@@ -767,12 +768,12 @@ describe('snapshots', () => {
 
     const snapshots = await listSnapshots();
     expect(snapshots).toHaveLength(SNAPSHOT_LIMIT);
-    // Najnowsza na gorze, najstarsze wypchniete.
+    // The newest on top, the oldest pushed out.
     expect(snapshots[0]?.createdAt).toBe(10_000 + SNAPSHOT_LIMIT + 1);
     expect(snapshots[0]?.itemCount).toBe(1);
   });
 
-  it('kopia dobowa nie powtarza sie czesciej niz raz na SNAPSHOT_INTERVAL_MS', async () => {
+  it('the daily backup does not repeat more often than SNAPSHOT_INTERVAL_MS', async () => {
     await saveItem({ url: 'https://a.example/1' });
     const now = 1_000_000_000;
 
@@ -782,41 +783,41 @@ describe('snapshots', () => {
     expect(await listSnapshots()).toHaveLength(2);
   });
 
-  it('pusta baza nie zasluguje na kopie', async () => {
+  it('an empty database does not deserve a backup', async () => {
     expect(await createSnapshotIfDue(1_000)).toBeNull();
     expect(await listSnapshots()).toHaveLength(0);
   });
 
-  it('przywrocenie doklada skasowane pozycje i nie rusza reszty', async () => {
-    const skasowany = await saveItem({ url: 'https://a.example/1', tags: ['rust'] });
+  it('a restore adds back deleted items and leaves the rest alone', async () => {
+    const deleted = await saveItem({ url: 'https://a.example/1', tags: ['rust'] });
     await saveItem({ url: 'https://b.example/2' });
     await createSnapshot(10_000);
 
-    await deleteItem(skasowany.id);
-    const pozniejszy = await saveItem({ url: 'https://c.example/3' });
+    await deleteItem(deleted.id);
+    const later = await saveItem({ url: 'https://c.example/3' });
 
     const [snapshot] = await listSnapshots();
     const outcome = await restoreSnapshot(snapshot?.id ?? '');
 
     expect(outcome).toMatchObject({ added: 1, merged: 1 });
     expect((await getItemByUrl('https://a.example/1'))?.tags).toEqual(['rust']);
-    // Kopia jest starsza niz ta pozycja - przywracanie nie moze jej ruszyc.
-    expect(await getItem(pozniejszy.id)).toBeDefined();
+    // The backup is older than this item - restoring must not touch it.
+    expect(await getItem(later.id)).toBeDefined();
     expect(await countItems()).toBe(3);
   });
 
-  it('przywracanie nieistniejacej kopii to blad, nie cicha porazka', async () => {
-    await expect(restoreSnapshot('nie-ma-takiej')).rejects.toThrow(/Nie ma kopii/);
+  it('restoring a nonexistent backup is an error, not a silent failure', async () => {
+    await expect(restoreSnapshot('no-such-backup')).rejects.toThrow(/no backup/);
   });
 });
 
-describe('dataStats i clearAllData', () => {
-  it('licza to, co widac na stronie opcji', async () => {
-    const pierwszy = await saveItem({ url: 'https://a.example/1' });
-    const drugi = await saveItem({ url: 'https://b.example/2' });
-    await setContent(pierwszy.id, { html: '<p>a</p>', text: 'a' });
-    await addHighlight({ itemId: pierwszy.id, text: 'cytat', start: 0, end: 5 });
-    await updateItem(drugi.id, { archived: true, favorite: true, readAt: 1_000 });
+describe('dataStats and clearAllData', () => {
+  it('count what the options page shows', async () => {
+    const first = await saveItem({ url: 'https://a.example/1' });
+    const second = await saveItem({ url: 'https://b.example/2' });
+    await setContent(first.id, { html: '<p>a</p>', text: 'a' });
+    await addHighlight({ itemId: first.id, text: 'a quote', start: 0, end: 7 });
+    await updateItem(second.id, { archived: true, favorite: true, readAt: 1_000 });
     await createSnapshot(10_000);
 
     expect(await dataStats()).toEqual({
@@ -830,7 +831,7 @@ describe('dataStats i clearAllData', () => {
     });
   });
 
-  it('kasowanie czysci wszystko, a baza dziala dalej', async () => {
+  it('wiping clears everything and the database keeps working', async () => {
     const item = await saveItem({ url: 'https://a.example/1' });
     await setContent(item.id, { html: '<p>a</p>', text: 'a' });
     await createSnapshot(10_000);

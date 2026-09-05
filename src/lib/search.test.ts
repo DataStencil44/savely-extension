@@ -4,84 +4,85 @@ import { SearchIndex, tokenize } from './search';
 
 function makeIndex(): SearchIndex {
   const index = new SearchIndex();
-  index.addItem({ id: 'a', title: 'Nowy rok szkolny', excerpt: 'Zmiany w stołówkach' });
-  index.addItem({ id: 'b', title: 'Wybory w Mołdawii', excerpt: 'Kampania na finiszu' });
-  index.addItem({ id: 'c', title: 'Rower w mieście', excerpt: 'Nowe ścieżki rowerowe' });
+  index.addItem({ id: 'a', title: 'A new school year', excerpt: 'Changes in the canteens' });
+  index.addItem({ id: 'b', title: 'Elections in Moldova', excerpt: 'The campaign in its final days' });
+  index.addItem({ id: 'c', title: 'Cycling in the city', excerpt: 'New bike lanes' });
   return index;
 }
 
 describe('tokenize', () => {
-  it('sprowadza polskie znaki do postaci bez ogonków', () => {
+  it('folds diacritics down to plain letters', () => {
     expect(tokenize('Żółć ŁĄKA gęś')).toEqual(['zolc', 'laka', 'ges']);
   });
 
-  it('tnie na słowach i odsiewa jednoznakowe śmieci', () => {
+  it('splits on words and drops single-character junk', () => {
     expect(tokenize('a b, cd-ef!')).toEqual(['cd', 'ef']);
   });
 });
 
 describe('SearchIndex', () => {
-  it('znajduje po tytule i po zajawce', () => {
+  it('finds by title and by excerpt', () => {
     const index = makeIndex();
-    expect(index.search('szkolny')).toEqual(['a']);
-    expect(index.search('kampania')).toEqual(['b']);
+    expect(index.search('school')).toEqual(['a']);
+    expect(index.search('campaign')).toEqual(['b']);
   });
 
-  it('ignoruje polskie diakrytyki w zapytaniu i w danych', () => {
-    const index = makeIndex();
-    expect(index.search('stolowkach')).toEqual(['a']);
-    expect(index.search('ścieżki')).toEqual(['c']);
-  });
-
-  it('dopasowuje przedrostki (tokenize: forward)', () => {
-    const index = makeIndex();
-    expect(index.search('rowe')).toContain('c');
-  });
-
-  it('treść dochodzi po metadanych i też jest przeszukiwalna', () => {
-    const index = makeIndex();
-    expect(index.search('kuratorium')).toEqual([]);
-
-    index.setText('a', 'Kuratorium zapowiedziało kontrole w szkołach podstawowych.');
-    expect(index.search('kuratorium')).toEqual(['a']);
-
-    // Metadane nie giną po dołożeniu treści.
-    expect(index.search('szkolny')).toEqual(['a']);
-  });
-
-  it('trafienie w tytuł waży więcej niż w treści', () => {
+  it('ignores diacritics in the query and in the data', () => {
     const index = new SearchIndex();
-    index.addItem({ id: 'tytul', title: 'Rower miejski', excerpt: '' });
-    index.addItem({ id: 'tresc', title: 'Zupełnie co innego', excerpt: '' });
-    index.setText('tresc', 'W tekście pada słowo rower, ale dopiero w środku.');
-
-    expect(index.search('rower')[0]).toBe('tytul');
+    index.addItem({ id: 'a', title: 'Kraków', excerpt: 'Ścieżki rowerowe' });
+    expect(index.search('krakow')).toEqual(['a']);
+    expect(index.search('ścieżki')).toEqual(['a']);
   });
 
-  it('usuniecie wyjmuje pozycję z wyników', () => {
+  it('matches prefixes (tokenize: forward)', () => {
+    const index = makeIndex();
+    expect(index.search('cycl')).toContain('c');
+  });
+
+  it('content arrives after the metadata and is searchable too', () => {
+    const index = makeIndex();
+    expect(index.search('inspectorate')).toEqual([]);
+
+    index.setText('a', 'The inspectorate announced audits in primary schools.');
+    expect(index.search('inspectorate')).toEqual(['a']);
+
+    // The metadata does not disappear once content is added.
+    expect(index.search('school')).toEqual(['a']);
+  });
+
+  it('a hit in the title weighs more than one in the content', () => {
+    const index = new SearchIndex();
+    index.addItem({ id: 'title', title: 'City bicycle', excerpt: '' });
+    index.addItem({ id: 'content', title: 'Something else entirely', excerpt: '' });
+    index.setText('content', 'The word bicycle shows up in the text, but only midway through.');
+
+    expect(index.search('bicycle')[0]).toBe('title');
+  });
+
+  it('removal takes an item out of the results', () => {
     const index = makeIndex();
     index.remove('a');
-    expect(index.search('szkolny')).toEqual([]);
+    expect(index.search('school')).toEqual([]);
     expect(index.size).toBe(2);
   });
 
-  it('puste zapytanie nie zwraca nic', () => {
+  it('an empty query returns nothing', () => {
     expect(makeIndex().search('   ')).toEqual([]);
   });
 
-  it('radzi sobie z pięcioma tysiącami pozycji', () => {
+  it('copes with five thousand items', () => {
     const index = new SearchIndex();
     for (let i = 0; i < 5_000; i += 1) {
       index.addItem({
         id: `id-${String(i)}`,
-        title: `Artykuł numer ${String(i)} o rowerach`,
-        excerpt: 'Zajawka testowa',
+        title: `Article number ${String(i)} about bicycles`,
+        excerpt: 'A test excerpt',
       });
     }
-    index.setText('id-4999', 'Ostatni tekst zawiera słowo lokomotywa.');
+    index.setText('id-4999', 'The last text contains the word locomotive.');
 
     expect(index.size).toBe(5_000);
-    expect(index.search('lokomotywa')).toEqual(['id-4999']);
-    expect(index.search('rowerach', 10).length).toBe(10);
+    expect(index.search('locomotive')).toEqual(['id-4999']);
+    expect(index.search('bicycles', 10).length).toBe(10);
   });
 });

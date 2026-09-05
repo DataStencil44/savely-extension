@@ -1,25 +1,26 @@
 /**
- * gzip + base64 dla treści artykułów.
+ * gzip + base64 for article content.
  *
- * Treść to 90% objętości synchronizacji i jednocześnie tekst, który gzip tnie
- * do jednej piątej. Providery przyjmują pliki tekstowe (Gist trzyma tekst,
- * nie binaria), stąd base64 na wyjściu.
+ * Content is 90% of the sync volume and, at the same time, text that gzip cuts
+ * to a fifth. Providers accept text files (a Gist stores text, not binaries),
+ * hence base64 on the way out.
  *
- * `CompressionStream` jest natywne w Chrome 80+ i Firefoksie 113+ - żadnej
- * biblioteki do tego nie dokładamy.
+ * `CompressionStream` is native in Chrome 80+ and Firefox 113+ - we add no
+ * library for this.
  *
- * Funkcje żonglują `ArrayBuffer`, a nie `Uint8Array`, bo tylko ten pierwszy
- * jest bezspornym `BlobPart` - widok mógłby siedzieć na `SharedArrayBuffer`.
+ * The functions juggle `ArrayBuffer` rather than `Uint8Array`, because only the
+ * former is an unambiguous `BlobPart` - a view could sit on a
+ * `SharedArrayBuffer`.
  */
 
-/** Ile bajtów bierzemy naraz przy składaniu base64. */
+/** How many bytes we take at a time while assembling base64. */
 const CHUNK = 0x8000;
 
 function toBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
 
-  // `String.fromCharCode(...bytes)` na całości przepełnia stos argumentów przy
-  // kilku megabajtach - stąd porcje.
+  // `String.fromCharCode(...bytes)` over the whole array overflows the argument
+  // stack at a few megabytes - hence the chunks.
   let binary = '';
   for (let offset = 0; offset < bytes.length; offset += CHUNK) {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + CHUNK));
@@ -66,7 +67,7 @@ export async function gzipToBase64(text: string): Promise<string> {
 }
 
 export async function gunzipFromBase64(value: string): Promise<string> {
-  // Base64 z pliku bywa łamane co N znaków - białe znaki nie są danymi.
+  // Base64 from a file is sometimes wrapped every N characters - whitespace is not data.
   const clean = value.replace(/\s+/g, '');
   const stream = new Blob([fromBase64(clean)])
     .stream()

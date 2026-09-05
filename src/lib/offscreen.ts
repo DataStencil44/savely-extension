@@ -1,14 +1,15 @@
 /**
- * Parsowanie HTML-a pobranego w tle (sciezka B), niezaleznie od silnika.
+ * Parsing HTML fetched in the background (path B), whatever the engine.
  *
- * Firefox: strona tla ma DOM, wiec `DOMParser` jest na miejscu.
- * Chromium: service worker nie ma DOM-u - HTML jedzie do dokumentu offscreen,
- * ktory istnieje tylko na czas jednego parsowania.
+ * Firefox: the background page has a DOM, so `DOMParser` is right there.
+ * Chromium: the service worker has no DOM - the HTML travels to an offscreen
+ * document that exists only for the duration of one parse.
  *
- * To jedyne miejsce w `src/` z `chrome.*`: API `offscreen` nie ma ani
- * w Firefoksie, ani w webextension-polyfill (dopuszczony wyjatek, CLAUDE.md 5.4).
+ * This is the only place in `src/` with `chrome.*`: the `offscreen` API exists
+ * neither in Firefox nor in webextension-polyfill (an allowed exception,
+ * CLAUDE.md 5.4).
  */
-/* eslint-disable no-restricted-globals, no-restricted-syntax -- feature-detect API offscreen (Chromium) */
+/* eslint-disable no-restricted-globals, no-restricted-syntax -- feature-detect the offscreen API (Chromium) */
 import browser from 'webextension-polyfill';
 
 import { extractFromHtml } from './extract';
@@ -19,9 +20,9 @@ import type { ExtractOutcome } from '@/types/article';
 const OFFSCREEN_PAGE = 'offscreen/offscreen.html';
 
 /**
- * Parsuje HTML tam, gdzie jest DOM, i zwraca gotowy wynik ekstrakcji.
- * Wybor sciezki po zdolnosciach srodowiska, nie po `__TARGET__` - dzieki temu
- * dziala tez tam, gdzie Firefox kiedys przejdzie na service workery.
+ * Parses HTML wherever a DOM exists and returns a finished extraction result.
+ * The path is chosen by environment capability, not by `__TARGET__` - so it
+ * keeps working once Firefox moves to service workers.
  */
 export async function extractHtmlOutOfBand(html: string, url: string): Promise<ExtractOutcome> {
   if (typeof DOMParser !== 'undefined') {
@@ -30,24 +31,24 @@ export async function extractHtmlOutOfBand(html: string, url: string): Promise<E
 
   const offscreen = typeof chrome === 'undefined' ? undefined : chrome.offscreen;
   if (offscreen === undefined) {
-    throw new Error('To srodowisko nie potrafi sparsowac HTML-a w tle.');
+    throw new Error('This environment cannot parse HTML in the background.');
   }
 
   try {
     await offscreen.createDocument({
       url: OFFSCREEN_PAGE,
       reasons: ['DOM_PARSER'],
-      justification: 'Parsowanie HTML zapisywanej strony do postaci artykulu.',
+      justification: 'Parsing the saved page HTML into an article.',
     });
   } catch {
-    // Rozszerzenie moze miec tylko jeden dokument offscreen. Jesli juz istnieje
-    // (rownolegly zapis), po prostu z niego korzystamy.
+    // An extension may have only one offscreen document. If one already exists
+    // (a concurrent save), we simply reuse it.
   }
 
   try {
-    // `createDocument` potrafi wrocic, zanim skrypt dokumentu zdazy zarejestrowac
-    // listenera - wtedy pierwsza wiadomosc odbija sie "receiving end does not
-    // exist". Stad kilka podejsc z krotka przerwa.
+    // `createDocument` can return before the document's script registers its
+    // listener - the first message then bounces with "receiving end does not
+    // exist". Hence a few attempts with a short pause.
     let lastError: unknown = null;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
@@ -57,7 +58,7 @@ export async function extractHtmlOutOfBand(html: string, url: string): Promise<E
           url,
         });
         if (!isOutcomeResponse(response)) {
-          throw new Error('Parser offscreen nie odpowiedzial poprawnie.');
+          throw new Error('The offscreen parser did not answer correctly.');
         }
         return response.outcome;
       } catch (error) {
@@ -69,12 +70,12 @@ export async function extractHtmlOutOfBand(html: string, url: string): Promise<E
     }
     throw lastError instanceof Error
       ? lastError
-      : new Error('Parser offscreen nie odpowiedzial.');
+      : new Error('The offscreen parser did not answer.');
   } finally {
     try {
       await offscreen.closeDocument();
     } catch {
-      // Dokument mogl juz zniknac - nie ma czego sprzatac.
+      // The document may already be gone - nothing to clean up.
     }
   }
 }

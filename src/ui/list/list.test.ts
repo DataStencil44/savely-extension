@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 /**
- * Test widoku listy na jsdom: montujemy prawdziwy `list.html`, uruchamiamy
- * `list.ts` i klikamy jak użytkownik.
+ * A list-view test on jsdom: we mount the real `list.html`, run `list.ts` and
+ * click the way a user would.
  *
- * Sprawdzamy przede wszystkim to, czego nie widać w testach jednostkowych:
- * że wirtualizacja trzyma w DOM-ie kilkanaście kart niezależnie od długości
- * listy, oraz że popup i pełna strona różnią się dokładnie tym, czym mają.
+ * What we check above all is what the unit tests cannot see: that the
+ * virtualization keeps a dozen or so cards in the DOM regardless of list
+ * length, and that the popup and the full page differ in exactly the ways they
+ * should.
  */
 import 'fake-indexeddb/auto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -15,13 +16,13 @@ import { deleteDb, getItem, saveItem, setContent } from '@/lib/db';
 
 const ITEMS = 300;
 
-/** Adresy przekazane do `tabs.create` - stad wiemy, co poszlo do nowej karty. */
+/** The addresses passed to `tabs.create` - this is how we know what opened in a new tab. */
 const openedTabs: string[] = [];
 
 /**
- * Markup strony bez `<script>` - moduł ładujemy sami, po przygotowaniu DOM-u.
- * Składamy go przez DOMParser, a nie `innerHTML`: ta sama zasada obowiązuje
- * w testach, co w kodzie (CLAUDE.md 3).
+ * The page markup without `<script>` - we load the module ourselves, once the
+ * DOM is ready. It is assembled with DOMParser rather than `innerHTML`: the same
+ * rule holds in the tests as in the code (CLAUDE.md 3).
  */
 function mount(search: string): void {
   window.history.replaceState({}, '', `/ui/list/list.html${search}`);
@@ -44,7 +45,7 @@ function cards(): NodeListOf<HTMLLIElement> {
 beforeAll(async () => {
   await deleteDb();
 
-  // webextension-polyfill sprawdza `chrome.runtime.id` przy ładowaniu modułu.
+  // webextension-polyfill checks `chrome.runtime.id` when the module loads.
   const noop = (): void => undefined;
   Object.defineProperty(globalThis, 'chrome', {
     configurable: true,
@@ -68,8 +69,8 @@ beforeAll(async () => {
     },
   });
 
-  // jsdom nie implementuje `showModal`/`close` na <dialog> (Chrome i Firefox
-  // w naszych wersjach minimalnych - tak). Podstawiamy minimalny odpowiednik.
+  // jsdom does not implement `showModal`/`close` on <dialog> (Chrome and
+  // Firefox at our minimum versions do). We substitute a minimal equivalent.
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
     configurable: true,
     value(this: HTMLDialogElement) {
@@ -83,7 +84,7 @@ beforeAll(async () => {
     },
   });
 
-  // jsdom nie liczy układu, a wirtualizacja potrzebuje wysokości okna.
+  // jsdom computes no layout, and the virtualization needs the viewport height.
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
     configurable: true,
     get: () => 600,
@@ -91,17 +92,17 @@ beforeAll(async () => {
 
   for (let i = 0; i < ITEMS; i += 1) {
     const item = await saveItem({
-      url: `https://serwis-${String(i % 7)}.example/artykul-${String(i)}`,
-      title: `Artykuł numer ${String(i)}`,
-      excerpt: `Zajawka pozycji ${String(i)}`,
+      url: `https://site-${String(i % 7)}.example/article-${String(i)}`,
+      title: `Article number ${String(i)}`,
+      excerpt: `Excerpt of item ${String(i)}`,
       wordCount: 400,
       savedAt: 1_700_000_000_000 + i * 1_000,
       tags: i % 3 === 0 ? ['rust'] : [],
     });
     if (i % 5 === 0) {
       await setContent(item.id, {
-        html: `<p>Treść ${String(i)}</p>`,
-        text: `Tekst pozycji ${String(i)} ze słowem lokomotywa`,
+        html: `<p>Content ${String(i)}</p>`,
+        text: `The text of item ${String(i)} with the word locomotive`,
       });
     }
   }
@@ -111,7 +112,7 @@ afterAll(async () => {
   await deleteDb();
 });
 
-describe('pełna strona', () => {
+describe('the full page', () => {
   beforeAll(async () => {
     vi.resetModules();
     mount('?full=1');
@@ -119,26 +120,26 @@ describe('pełna strona', () => {
     await settle(200);
   });
 
-  it('trzyma w DOM-ie okno kart, nie całą listę', () => {
+  it('keeps a window of cards in the DOM, not the whole list', () => {
     expect(cards().length).toBeGreaterThan(0);
     expect(cards().length).toBeLessThan(20);
-    // Rozpychacz odpowiada pełnej liście, więc pasek przewijania jest prawdziwy.
+    // The spacer matches the full list, so the scrollbar tells the truth.
     expect(document.querySelector<HTMLElement>('#sizer')?.style.height).toBe(`${String(ITEMS * 104)}px`);
   });
 
-  it('pokazuje najnowsze na górze i liczy zakładki', () => {
+  it('shows the newest on top and counts the tabs', () => {
     expect(document.querySelector('.card__title')?.textContent).toBe(
-      `Artykuł numer ${String(ITEMS - 1)}`,
+      `Article number ${String(ITEMS - 1)}`,
     );
     const counts = [...document.querySelectorAll('.tab__count')].map((node) => node.textContent);
     expect(counts).toEqual([String(ITEMS), '0', '0']);
   });
 
-  it('każda karta ma komplet akcji', () => {
+  it('every card carries the full set of actions', () => {
     expect(document.querySelectorAll('.card:first-child .card__actions .icon')).toHaveLength(6);
   });
 
-  it('czytnik otwiera się w nowej karcie i nie oznacza pozycji jako przeczytanej', async () => {
+  it('the reader opens in a new tab and does not mark the item as read', async () => {
     openedTabs.length = 0;
 
     document.querySelector<HTMLButtonElement>('.card:first-child .card__actions .icon')?.click();
@@ -147,23 +148,23 @@ describe('pełna strona', () => {
     const opened = openedTabs.at(-1) ?? '';
     expect(opened).toContain('ui/reader/index.html?id=');
 
-    // O oznaczeniu jako przeczytane decyduje czytnik po dojściu do 90% treści.
+    // The reader decides on the read mark after reaching 90% of the content.
     const id = new URL(opened).searchParams.get('id') ?? '';
     expect((await getItem(id))?.readAt).toBeNull();
   });
 
-  it('przewijanie przesuwa okno, a nie dokłada wierszy', async () => {
+  it('scrolling moves the window rather than adding rows', async () => {
     const scroller = document.querySelector<HTMLDivElement>('#scroller');
-    if (scroller === null) throw new Error('brak kontenera przewijania');
+    if (scroller === null) throw new Error('no scroll container');
 
     scroller.scrollTop = 100 * 104;
     scroller.dispatchEvent(new Event('scroll'));
     await new Promise((resolve) => requestAnimationFrame(resolve));
 
     expect(cards().length).toBeLessThan(20);
-    expect(document.querySelector('.card__title')?.textContent).toContain('Artykuł numer');
+    expect(document.querySelector('.card__title')?.textContent).toContain('Article number');
     expect(document.querySelector('.card__title')?.textContent).not.toBe(
-      `Artykuł numer ${String(ITEMS - 1)}`,
+      `Article number ${String(ITEMS - 1)}`,
     );
 
     scroller.scrollTop = 0;
@@ -171,39 +172,39 @@ describe('pełna strona', () => {
     await new Promise((resolve) => requestAnimationFrame(resolve));
   });
 
-  it('zakładka archiwum jest pusta i mówi o tym wprost', async () => {
+  it('the archive tab is empty and says so plainly', async () => {
     document.querySelector<HTMLButtonElement>('[data-tab="archive"]')?.click();
     await settle(30);
 
     expect(cards()).toHaveLength(0);
-    expect(document.querySelector('#empty')?.textContent).toBe('Archiwum jest puste.');
+    expect(document.querySelector('#empty')?.textContent).toBe('The archive is empty.');
 
     document.querySelector<HTMLButtonElement>('[data-tab="inbox"]')?.click();
     await settle(30);
   });
 
-  it('szuka po tytule z debounce', async () => {
+  it('searches by title with a debounce', async () => {
     const search = document.querySelector<HTMLInputElement>('#search');
-    if (search === null) throw new Error('brak pola wyszukiwania');
+    if (search === null) throw new Error('no search field');
 
-    search.value = 'numer 137';
+    search.value = 'number 137';
     search.dispatchEvent(new Event('input'));
 
-    // Przed upływem debounce lista jeszcze się nie przeliczyła.
+    // Before the debounce elapses the list has not recomputed yet.
     await settle(60);
     expect(document.querySelector('.card__title')?.textContent).toBe(
-      `Artykuł numer ${String(ITEMS - 1)}`,
+      `Article number ${String(ITEMS - 1)}`,
     );
 
     await settle(200);
-    expect(document.querySelector('.card__title')?.textContent).toBe('Artykuł numer 137');
+    expect(document.querySelector('.card__title')?.textContent).toBe('Article number 137');
 
     search.value = '';
     search.dispatchEvent(new Event('input'));
     await settle(200);
   });
 
-  it('obsługuje klawiaturę: strzałki, / i ?', async () => {
+  it('handles the keyboard: arrows, / and ?', async () => {
     const selectedIndex = (): string | undefined =>
       document.querySelector<HTMLLIElement>('.card[aria-selected="true"]')?.dataset['index'];
 
@@ -226,7 +227,7 @@ describe('pełna strona', () => {
     key({ key: '/' });
     expect(document.activeElement).toBe(document.querySelector('#search'));
 
-    // Skróty nie mogą działać w polu tekstowym - to zwykłe pisanie.
+    // Shortcuts must not fire inside a text field - that is ordinary typing.
     document.querySelector<HTMLInputElement>('#search')?.dispatchEvent(
       new KeyboardEvent('keydown', { bubbles: true, key: 'a' }),
     );
@@ -240,7 +241,7 @@ describe('pełna strona', () => {
     expect(document.querySelector<HTMLDialogElement>('#help-dialog')?.open).toBe(false);
   });
 
-  it('klik w tag włącza filtr, a chip go wyłącza', async () => {
+  it('clicking a tag turns the filter on and the chip turns it off', async () => {
     document.querySelector<HTMLButtonElement>('.card__tags .chip')?.click();
     await settle(30);
     expect(document.querySelector('#active-tags')?.textContent).toContain('#rust');
@@ -253,7 +254,7 @@ describe('pełna strona', () => {
     expect(document.querySelector<HTMLElement>('#active-tags')?.hidden).toBe(true);
   });
 
-  it('usunięcie pokazuje toast i daje się cofnąć', async () => {
+  it('a deletion shows a toast and can be undone', async () => {
     const first = document.querySelector('.card__title')?.textContent;
 
     document.querySelector<HTMLButtonElement>('.card__actions .icon:last-child')?.click();
@@ -261,7 +262,7 @@ describe('pełna strona', () => {
 
     const toast = document.querySelector<HTMLElement>('#toast');
     expect(toast?.hidden).toBe(false);
-    expect(toast?.textContent).toContain('Usunięto');
+    expect(toast?.textContent).toContain('Deleted');
     expect(document.querySelector('.card__title')?.textContent).not.toBe(first);
 
     document.querySelector<HTMLButtonElement>('.toast__action')?.click();
@@ -280,16 +281,16 @@ describe('popup', () => {
     await settle(200);
   });
 
-  it('pokazuje najwyżej 20 pozycji i przycisk do pełnej listy', () => {
+  it('shows at most 20 items and a button to the full list', () => {
     expect(document.body.dataset['mode']).toBe('popup');
-    // 20 pozycji w modelu, w DOM-ie tylko okno widoczne na 600 px.
+    // 20 items in the model, in the DOM only the window visible at 600 px.
     expect(document.querySelector<HTMLElement>('#sizer')?.style.height).toBe(`${String(20 * 104)}px`);
     expect(cards().length).toBeLessThanOrEqual(20);
 
     const footer = document.querySelector<HTMLElement>('#footer');
     expect(footer?.hidden).toBe(false);
     expect(document.querySelector('#see-all')?.textContent).toBe(
-      `Zobacz wszystkie (${String(ITEMS)})`,
+      `See all (${String(ITEMS)})`,
     );
   });
 });

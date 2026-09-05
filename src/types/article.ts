@@ -1,6 +1,6 @@
 /**
- * Kontrakt wyniku ekstrakcji - wspolny dla obu sciezek zapisu:
- * content script w karcie (A) i fetch + parsowanie w tle (B).
+ * The extraction result contract - shared by both save paths:
+ * the content script in the tab (A) and background fetch + parse (B).
  */
 
 export interface ExtractedArticle {
@@ -9,29 +9,29 @@ export interface ExtractedArticle {
   byline: string | null;
   siteName: string | null;
   lang: string | null;
-  /** HTML po Readability i po DOMPurify - gotowy do zapisu. */
+  /** HTML after Readability and after DOMPurify - ready to store. */
   html: string;
-  /** Ta sama tresc jako czysty tekst (zrodlo dla wordCount i wyszukiwarki). */
+  /** The same content as plain text (the source for wordCount and search). */
   text: string;
   wordCount: number;
   estReadingMinutes: number;
-  /** Adres, wzgledem ktorego rozwiazano linki i obrazki. */
+  /** The address links and images were resolved against. */
   resolvedUrl: string;
 }
 
-/** Dlaczego nie udalo sie wyciagnac pelnej tresci. */
+/** Why the full content could not be extracted. */
 export type ExtractProblem =
-  /** Dokument nie jest HTML-em (PDF, obrazek, plugin). Nie zapisujemy. */
+  /** The document is not HTML (a PDF, an image, a plugin). Not saved. */
   | 'unsupported-document'
-  /** Strona jest pusta albo niedostepna. Nie zapisujemy. */
+  /** The page is empty or unreachable. Not saved. */
   | 'empty-document'
-  /** Readability nic nie zwrocil - zapisujemy sam wpis (status 'failed'). */
+  /** Readability returned nothing - we store the entry alone (status 'failed'). */
   | 'no-article';
 
-/** Minimum, ktore i tak trafia na liste, gdy Readability polegnie. */
+/** The minimum that still lands in the list when Readability gives up. */
 export interface ArticleStub {
   title: string;
-  /** Zwykle `og:description` albo `meta[name=description]`. */
+  /** Usually `og:description` or `meta[name=description]`. */
   excerpt: string;
   siteName: string | null;
   lang: string | null;

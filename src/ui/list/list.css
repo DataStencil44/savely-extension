@@ -1,7 +1,8 @@
 /*
- * Jeden arkusz na dwa tryby: popup (`data-mode="popup"`) i pełna strona.
- * Popup ma sufit 600 px i stałą szerokość; pełna strona rozpycha się do 860 px.
- * Wszystko musi być użyteczne przy 360 px - tyle ma Firefox na Androidzie.
+ * One stylesheet for two modes: the popup (`data-mode="popup"`) and the full
+ * page. The popup is capped at 600 px with a fixed width; the full page expands
+ * to 860 px. Everything has to stay usable at 360 px - that is what Firefox for
+ * Android gives us.
  */
 :root {
   --bg: #ffffff;
@@ -14,8 +15,8 @@
   --danger: #b91c1c;
   --shadow: 0 8px 24px rgb(0 0 0 / 0.14);
 
-  /* Kontrakt z wirtualizacją: JS czyta tę wartość (`readRowHeight`), więc
-     karta musi się w niej mieścić przy każdej szerokości ekranu. */
+  /* A contract with the virtualization: the JS reads this value
+     (`readRowHeight`), so a card has to fit inside it at every screen width. */
   --row-h: 104px;
 
   color-scheme: light dark;
@@ -56,15 +57,15 @@ body[data-mode='popup'] {
 }
 
 body[data-mode='full'] {
-  /* Przewija sie lista, nie strona - wirtualizacja mierzy `scrollTop`
-     i `clientHeight` kontenera, wiec musi on byc elementem przewijanym. */
+  /* The list scrolls, not the page - the virtualization measures the
+     container's `scrollTop` and `clientHeight`, so it must be the scroller. */
   height: 100vh;
   max-width: 860px;
   margin: 0 auto;
   padding: 0 16px;
 }
 
-/* --- pasek górny --- */
+/* --- top bar --- */
 
 .topbar {
   position: sticky;
@@ -239,7 +240,7 @@ body[data-mode='full'] {
   color: var(--accent);
 }
 
-/* --- lista --- */
+/* --- list --- */
 
 .main {
   position: relative;
@@ -361,7 +362,7 @@ body[data-mode='full'] {
   background: var(--bg);
 }
 
-/* --- toast, edytor tagów, pomoc --- */
+/* --- toast, tag editor, help --- */
 
 .toast {
   position: fixed;
@@ -466,12 +467,13 @@ body[data-mode='full'] {
   margin: 0;
 }
 
-/* --- wąsko: Firefox na Androidzie, 360 px --- */
+/* --- narrow: Firefox for Android, 360 px --- */
 
 @media (max-width: 400px) {
   :root {
-    /* Akcje schodza pod tagi, wiec wiersz musi urosnac. JS czyta te wartosc
-       i przelicza wirtualizacje - patrz `readRowHeight` w list.ts. */
+    /* The actions move below the tags, so the row has to grow. The JS reads
+       this value and recomputes the virtualization - see `readRowHeight` in
+       list.ts. */
     --row-h: 128px;
   }
 
@@ -502,8 +504,8 @@ body[data-mode='full'] {
     height: 28px;
   }
 
-  /* Bez kursora nie ma "pokaż po najechaniu" - akcje muszą być zawsze widoczne,
-     więc przy wąskim ekranie oddajemy im cały dolny wiersz karty. */
+  /* With no pointer there is no "reveal on hover" - the actions must always be
+     visible, so on a narrow screen they get the card's whole bottom row. */
   .card__footer {
     flex-direction: column;
     align-items: stretch;

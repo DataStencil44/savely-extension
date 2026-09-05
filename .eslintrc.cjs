@@ -1,6 +1,6 @@
 /**
- * ESLint (format .eslintrc) - plik ma rozszerzenie .cjs, bo package.json
- * deklaruje "type": "module", a ESLint 8 ladunek konfiguracji robi przez require().
+ * ESLint (.eslintrc format) - the file has a .cjs extension because package.json
+ * declares "type": "module", while ESLint 8 loads its config through require().
  */
 module.exports = {
   root: true,
@@ -24,9 +24,9 @@ module.exports = {
   ],
   ignorePatterns: ['dist/', 'node_modules/', '*.cjs'],
   rules: {
-    // --- twarde zasady projektu ---
+    // --- the project's hard rules ---
 
-    // brak `any`
+    // no `any`
     '@typescript-eslint/no-explicit-any': 'error',
     '@typescript-eslint/no-unsafe-assignment': 'error',
     '@typescript-eslint/no-unsafe-member-access': 'error',
@@ -34,49 +34,49 @@ module.exports = {
     '@typescript-eslint/no-unsafe-argument': 'error',
     '@typescript-eslint/no-unsafe-return': 'error',
 
-    // ESM, spojne importy typow
+    // ESM, consistent type imports
     '@typescript-eslint/consistent-type-imports': [
       'error',
       { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
     ],
     '@typescript-eslint/no-require-imports': 'error',
 
-    // API przegladarki wylacznie przez webextension-polyfill
+    // Browser APIs exclusively through webextension-polyfill
     'no-restricted-globals': [
       'error',
       {
         name: 'chrome',
         message:
-          "Uzyj `import browser from 'webextension-polyfill'` zamiast globalnego `chrome.*` (patrz CLAUDE.md 5.4).",
+          "Use `import browser from 'webextension-polyfill'` instead of the global `chrome.*` (see CLAUDE.md 5.4).",
       },
     ],
 
     'no-restricted-syntax': [
       'error',
       {
-        // brak innerHTML/outerHTML bez DOMPurify
+        // no innerHTML/outerHTML without DOMPurify
         selector:
           "AssignmentExpression[left.type='MemberExpression'][left.property.name=/^(innerHTML|outerHTML)$/]:not([right.callee.object.name='DOMPurify'])",
         message:
-          'Zapis do innerHTML/outerHTML tylko z wynikiem DOMPurify.sanitize() (patrz CLAUDE.md 3).',
+          'Writing to innerHTML/outerHTML only with the result of DOMPurify.sanitize() (see CLAUDE.md 3).',
       },
       {
         selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
         message:
-          'insertAdjacentHTML jest zabronione - uzyj DOMPurify.sanitize(..., { RETURN_DOM_FRAGMENT: true }) + append().',
+          'insertAdjacentHTML is forbidden - use DOMPurify.sanitize(..., { RETURN_DOM_FRAGMENT: true }) + append().',
       },
       {
         selector: "MemberExpression[object.name='chrome']",
         message:
-          "Uzyj `browser.*` z webextension-polyfill zamiast `chrome.*` (patrz CLAUDE.md 5.4).",
+          "Use `browser.*` from webextension-polyfill instead of `chrome.*` (see CLAUDE.md 5.4).",
       },
       {
         selector: "CallExpression[callee.name='eval']",
-        message: 'eval jest zabronione przez CSP Manifest V3.',
+        message: 'eval is forbidden by the Manifest V3 CSP.',
       },
     ],
 
-    // --- higiena ---
+    // --- hygiene ---
     eqeqeq: ['error', 'always'],
     'no-console': ['warn', { allow: ['warn', 'error'] }],
     'no-var': 'error',
@@ -91,16 +91,16 @@ module.exports = {
   },
   overrides: [
     {
-      // background dziala w service workerze (Chrome) / event page (Firefox) - bez DOM
+      // the background runs in a service worker (Chrome) / event page (Firefox) - no DOM
       files: ['src/background/**/*.ts'],
       env: { browser: false, worker: true, webextensions: true },
       rules: {
         'no-restricted-globals': [
           'error',
-          { name: 'chrome', message: 'Uzyj `browser.*` z webextension-polyfill.' },
-          { name: 'document', message: 'Background nie ma DOM (Chrome MV3 service worker).' },
-          { name: 'window', message: 'Background nie ma `window` (Chrome MV3 service worker).' },
-          { name: 'localStorage', message: 'Uzyj IndexedDB (idb) - patrz CLAUDE.md 5.5.' },
+          { name: 'chrome', message: 'Use `browser.*` from webextension-polyfill.' },
+          { name: 'document', message: 'The background has no DOM (Chrome MV3 service worker).' },
+          { name: 'window', message: 'The background has no `window` (Chrome MV3 service worker).' },
+          { name: 'localStorage', message: 'Use IndexedDB (idb) - see CLAUDE.md 5.5.' },
         ],
       },
     },
@@ -115,9 +115,10 @@ module.exports = {
       rules: { 'no-console': 'off' },
     },
     {
-      // Testy e2e sterują prawdziwym Chromium. Kod w `page.evaluate` wykonuje
-      // się w kontekście strony rozszerzenia, gdzie polyfilla nie ma i `chrome.*`
-      // jest jedynym API - stąd wyjątek od reguły z CLAUDE.md 5.4.
+      // The e2e tests drive real Chromium. Code inside `page.evaluate` runs in
+      // the context of the extension page, where the polyfill is absent and
+      // `chrome.*` is the only API - hence the exception to the CLAUDE.md 5.4
+      // rule.
       files: ['tests/e2e/**/*.ts'],
       env: { node: true, browser: true },
       rules: {

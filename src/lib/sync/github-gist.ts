@@ -1,15 +1,15 @@
 /**
- * Provider "GitHub Gist": jeden prywatny Gist jako skrzynka na dane.
+ * The "GitHub Gist" provider: one private Gist as a mailbox for the data.
  *
- * Dlaczego token osobisty, a nie OAuth Device Flow: Device Flow wymaga
- * `client_id` aplikacji, czyli konta, które ktoś musi utrzymywać, i wymiany
- * kodu na token po stronie GitHuba - a przy okazji sugeruje, że po drugiej
- * stronie stoi „usługa Savely". Nie stoi. Token, który użytkownik generuje sam
- * i sam może unieważnić, jest uczciwszy: widać dokładnie, czyje to konto,
- * jakie ma uprawnienia i kto ma dostęp do danych.
+ * Why a personal token rather than the OAuth Device Flow: Device Flow needs an
+ * application `client_id`, which means an account somebody has to maintain, and
+ * a code-for-token exchange on GitHub's side - and it implies that there is a
+ * "Savely service" on the other end. There is not. A token the user generates
+ * themselves and can revoke themselves is more honest: it is plain to see whose
+ * account it is, what it may do and who can reach the data.
  *
- * Token żyje wyłącznie w `storage.local` - nigdy w `storage.sync`, bo tamto
- * wychodzi na serwery przeglądarki i na wszystkie zalogowane urządzenia.
+ * The token lives only in `storage.local` - never in `storage.sync`, because
+ * that travels to the browser's servers and to every signed-in device.
  */
 import browser from 'webextension-polyfill';
 
@@ -27,9 +27,9 @@ import {
 const STORAGE_KEY = 'sync-github';
 const API = 'https://api.github.com';
 const ORIGIN = 'https://api.github.com/*';
-const DESCRIPTION = 'Savely - synchronizacja (prywatny gist, dane rozszerzenia)';
+const DESCRIPTION = 'Savely - sync (private gist, extension data)';
 
-/** Gist bywa ucinany przy większych plikach; nad ~10 MB API zaczyna odmawiać. */
+/** A Gist gets truncated on larger files; above ~10 MB the API starts refusing. */
 const MAX_FILE_BYTES = 9 * 1024 * 1024;
 
 interface Credentials {
@@ -81,23 +81,23 @@ function headers(token: string): Record<string, string> {
   };
 }
 
-/** Zamienia odpowiedź GitHuba na komunikat, z którym da się cokolwiek zrobić. */
+/** Turns a GitHub response into a message someone can act on. */
 async function fail(response: Response): Promise<never> {
   if (response.status === 401) {
-    throw new SyncAccessError('GitHub odrzucił token. Wygeneruj nowy i połącz ponownie.');
+    throw new SyncAccessError('GitHub rejected the token. Generate a new one and connect again.');
   }
   if (response.status === 403 || response.status === 429) {
     throw new SyncAccessError(
-      'GitHub odmówił (limit zapytań albo brak uprawnienia "gist" w tokenie).',
+      'GitHub refused (rate limit, or the token lacks the "gist" scope).',
     );
   }
   if (response.status === 404) {
-    throw new SyncAccessError('Gist zniknął albo token nie ma do niego dostępu.');
+    throw new SyncAccessError('The gist is gone, or the token has no access to it.');
   }
 
   const body = await response.text().catch(() => '');
   throw new SyncAccessError(
-    `GitHub odpowiedział ${String(response.status)}${body === '' ? '' : `: ${body.slice(0, 200)}`}`,
+    `GitHub answered ${String(response.status)}${body === '' ? '' : `: ${body.slice(0, 200)}`}`,
   );
 }
 
@@ -107,7 +107,7 @@ async function call(token: string, path: string, init?: RequestInit): Promise<Gi
     response = await fetch(`${API}${path}`, { ...init, headers: headers(token) });
   } catch (error) {
     throw new SyncAccessError(
-      `Nie udało się połączyć z api.github.com (${error instanceof Error ? error.message : 'brak sieci'}).`,
+      `Could not reach api.github.com (${error instanceof Error ? error.message : 'no network'}).`,
     );
   }
 
@@ -124,24 +124,24 @@ export class GitHubGistProvider implements SyncProvider {
   readonly label = 'GitHub Gist';
 
   readonly dataLocation =
-    'Dane trafiają do jednego prywatnego Gista na Twoim koncie GitHub: metadane jako czytelny JSON, treści artykułów spakowane gzipem. Prywatny gist nie jest indeksowany, ale nie jest też zaszyfrowany - kto ma ten token albo dostęp do Twojego konta GitHub, przeczyta wszystko, co zapisałeś.';
+    'Your data goes into a single private Gist on your GitHub account: metadata as readable JSON, article content gzipped. A private gist is not indexed, but it is not encrypted either - anyone holding this token, or with access to your GitHub account, can read everything you saved.';
 
   readonly prompt: ConnectPrompt = {
     kind: 'secret',
-    label: 'Token osobisty GitHub',
-    help: 'github.com → Settings → Developer settings → Personal access tokens. Klasyczny token potrzebuje wyłącznie uprawnienia "gist"; token fine-grained - uprawnienia "Gists: read and write". Token zostaje na tym urządzeniu (storage.local) i nigdy nie idzie do synchronizacji ustawień.',
-    placeholder: 'ghp_… albo github_pat_…',
+    label: 'GitHub personal access token',
+    help: 'github.com \u2192 Settings \u2192 Developer settings \u2192 Personal access tokens. A classic token needs only the "gist" scope; a fine-grained token needs "Gists: read and write". The token stays on this device (storage.local) and never goes into settings sync.',
+    placeholder: 'ghp_\u2026 or github_pat_\u2026',
   };
 
   async authorize(secret?: string): Promise<void> {
     const token = (secret ?? '').trim();
-    if (token === '') throw new SyncAccessError('Wklej token, inaczej nie ma jak się połączyć.');
+    if (token === '') throw new SyncAccessError('Paste a token, otherwise there is no way to connect.');
 
-    // PIERWSZY `await` w obsłudze kliknięcia - w Firefoksie prośba o dostęp
-    // musi wyjść prosto z gestu użytkownika (CLAUDE.md 5.3).
+    // The FIRST `await` in the click handler - in Firefox the permission
+    // request has to come straight from a user gesture (CLAUDE.md 5.3).
     const granted = await browser.permissions.request({ origins: [ORIGIN] });
     if (!granted) {
-      throw new SyncAccessError('Bez zgody na dostęp do api.github.com nie ma jak synchronizować.');
+      throw new SyncAccessError('Without permission for api.github.com there is no way to sync.');
     }
 
     await call(token, '/user');
@@ -155,7 +155,7 @@ export class GitHubGistProvider implements SyncProvider {
   async describe(): Promise<string | null> {
     const credentials = await readCredentials();
     if (credentials === null) return null;
-    if (credentials.gistId === null) return 'gist powstanie przy pierwszej synchronizacji';
+    if (credentials.gistId === null) return 'the gist will be created on the first sync';
     return `https://gist.github.com/${credentials.gistId}`;
   }
 
@@ -167,9 +167,9 @@ export class GitHubGistProvider implements SyncProvider {
     try {
       gist = await call(credentials.token, `/gists/${credentials.gistId}`);
     } catch (error) {
-      // Gist skasowany ręcznie: zapominamy o nim i zaczynamy od nowa, zamiast
-      // blokować synchronizację na zawsze.
-      if (error instanceof SyncAccessError && error.message.includes('zniknął')) {
+      // A gist deleted by hand: we forget about it and start over rather than
+      // blocking sync forever.
+      if (error instanceof SyncAccessError && error.message.includes('is gone')) {
         await writeCredentials({ ...credentials, gistId: null });
         return { files: null, revision: null };
       }
@@ -200,19 +200,19 @@ export class GitHubGistProvider implements SyncProvider {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      if (created.id === undefined) throw new SyncAccessError('GitHub nie oddał identyfikatora gista.');
+      if (created.id === undefined) throw new SyncAccessError('GitHub did not return a gist identifier.');
       await writeCredentials({ ...credentials, gistId: created.id });
       return revisionOf(created);
     }
 
-    // Gisty nie mają `If-Match`, więc wersję sprawdzamy tuż przed zapisem.
-    // Okno wyścigu zostaje, ale zwykły przypadek - drugie urządzenie
-    // zsynchronizowane w międzyczasie - łapiemy i mówimy o tym wprost.
+    // Gists have no `If-Match`, so we check the revision right before writing.
+    // A race window remains, but the ordinary case - another device syncing in
+    // the meantime - is caught and reported plainly.
     if (expectedRevision !== null) {
       const current = await call(credentials.token, `/gists/${credentials.gistId}`);
       if (revisionOf(current) !== expectedRevision) {
         throw new SyncConflictError(
-          'Dane w gistcie zmieniły się w trakcie synchronizacji (inne urządzenie zdążyło pierwsze). Uruchom synchronizację jeszcze raz.',
+          'The gist data changed mid-sync (another device got there first). Run the sync again.',
         );
       }
     }
@@ -225,25 +225,26 @@ export class GitHubGistProvider implements SyncProvider {
   }
 
   async disconnect(): Promise<void> {
-    // Sam gist zostaje - kasujemy tylko dostęp do niego z tego urządzenia.
+    // The gist itself stays - we only remove this device's access to it.
     await browser.storage.local.remove(STORAGE_KEY);
   }
 
   async #credentials(): Promise<Credentials> {
     const credentials = await readCredentials();
-    if (credentials === null) throw new SyncAccessError('Brak połączenia z GitHubem.');
+    if (credentials === null) throw new SyncAccessError('Not connected to GitHub.');
 
     if (!(await browser.permissions.contains({ origins: [ORIGIN] }))) {
       throw new SyncAccessError(
-        'Cofnięto zgodę na dostęp do api.github.com - połącz się ponownie w opcjach.',
+        'Permission for api.github.com was revoked - connect again on the options page.',
       );
     }
     return credentials;
   }
 
   /**
-   * Szuka gista Savely na koncie, zamiast od razu robić nowy: drugie urządzenie
-   * ma się podpiąć do tych samych danych, a nie założyć drugą skrzynkę.
+   * Looks for a Savely gist on the account instead of creating a new one right
+   * away: a second device should attach to the same data, not open a second
+   * mailbox.
    */
   async #findGist(token: string): Promise<string | null> {
     const response = await fetch(`${API}/gists?per_page=100`, { headers: headers(token) });
@@ -262,7 +263,7 @@ export class GitHubGistProvider implements SyncProvider {
     if (file.raw_url === undefined) return file.content ?? '';
     const response = await fetch(file.raw_url);
     if (!response.ok) {
-      throw new SyncAccessError('Nie udało się pobrać pełnej zawartości gista.');
+      throw new SyncAccessError('Could not fetch the full gist content.');
     }
     return response.text();
   }
@@ -271,7 +272,7 @@ export class GitHubGistProvider implements SyncProvider {
     for (const [name, content] of Object.entries(files)) {
       if (content.length > MAX_FILE_BYTES) {
         throw new SyncAccessError(
-          `Plik ${name} ma ${String(Math.round(content.length / 1024 / 1024))} MB - Gist tego nie przyjmie. Zarchiwizuj albo usuń część pozycji z treścią.`,
+          `The ${name} file is ${String(Math.round(content.length / 1024 / 1024))} MB - a Gist will not take it. Archive or delete some of the items that carry content.`,
         );
       }
     }

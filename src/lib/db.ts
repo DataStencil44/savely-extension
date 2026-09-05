@@ -1,16 +1,16 @@
 /**
- * Warstwa przechowywania: IndexedDB przez `idb`.
+ * The storage layer: IndexedDB through `idb`.
  *
- * Baza `savely`, piec magazynow:
- *   items      - metadane pozycji (lekkie, ladowane do listy)
- *   contents   - oczyszczony HTML + plain text, osobno i celowo:
- *                lista nie moze wciagac megabajtow tresci, zeby sie otworzyc
- *   highlights - zaznaczenia w tresci, powiazane przez itemId
- *   snapshots  - automatyczne kopie METADANYCH (bez tresci), ostatnie trzy
- *   tombstones - slady po skasowanych pozycjach, pod synchronizacje
+ * The `savely` database, five stores:
+ *   items      - item metadata (light, loaded into the list)
+ *   contents   - sanitized HTML + plain text, kept apart on purpose:
+ *                the list must not pull in megabytes of content just to open
+ *   highlights - selections inside the content, linked by itemId
+ *   snapshots  - automatic backups of METADATA (no content), the last three
+ *   tombstones - traces of deleted items, for sync
  *
- * IndexedDB jest jedynym zrodlem prawdy dla danych (CLAUDE.md 4.3);
- * `storage.local` zostaje na drobne ustawienia UI.
+ * IndexedDB is the single source of truth for data (CLAUDE.md 4.3);
+ * `storage.local` is left for small UI settings.
  */
 import {
   openDB,
@@ -24,7 +24,7 @@ import {
 import { estimateReadingMinutes } from '@/types/article';
 
 // ---------------------------------------------------------------------------
-// Typy domenowe
+// Domain types
 // ---------------------------------------------------------------------------
 
 export type ItemStatus = 'pending' | 'ready' | 'failed';
@@ -32,11 +32,11 @@ export type ItemStatus = 'pending' | 'ready' | 'failed';
 export interface SavedItem {
   id: string;
   /**
-   * Adres znormalizowany (bez parametrow sledzacych) - klucz deduplikacji
-   * i unikalny indeks `url`.
+   * The normalized address (without tracking parameters) - the deduplication
+   * key and the unique `url` index.
    */
   url: string;
-  /** Adres oryginalny, dokladnie taki, jaki przyszedl z karty. */
+  /** The original address, exactly as it came from the tab. */
   resolvedUrl: string;
   title: string;
   excerpt: string;
@@ -47,10 +47,9 @@ export interface SavedItem {
   estReadingMinutes: number;
   savedAt: number;
   /**
-   * Ostatnia zmiana czegokolwiek w tym rekordzie. Ustawiane przez **kazda**
-   * sciezke zapisu - to po nim synchronizacja rozstrzyga konflikty (kto
-   * zapisal pozniej, ten wygrywa), wiec pole nieaktualne = zmiana przepadnie
-   * przy nastepnym scaleniu.
+   * The last change to anything in this record. Set by **every** write path -
+   * sync resolves conflicts by it (whoever wrote later wins), so a stale value
+   * means the change is lost at the next merge.
    */
   updatedAt: number;
   readAt: number | null;
@@ -59,37 +58,38 @@ export interface SavedItem {
   tags: string[];
   contentHash: string | null;
   status: ItemStatus;
-  /** Ile artykulu przewinieto, 0..1. Czytnik zapisuje, lista moze pokazac. */
+  /** How far the article was scrolled, 0..1. The reader writes it, the list may show it. */
   readingProgress: number;
   /**
-   * Pochodna `archived` (0/1). IndexedDB nie indeksuje booleanow - rekordy
-   * z kluczem `false`/`true` po prostu nie trafilyby do indeksu. Utrzymywane
-   * automatycznie przez kazda sciezke zapisu; nie ustawiaj recznie.
+   * Derived from `archived` (0/1). IndexedDB does not index booleans - records
+   * keyed `false`/`true` would simply never reach the index. Maintained
+   * automatically by every write path; do not set it by hand.
    */
   archivedKey: 0 | 1;
 }
 
 export interface ItemContent {
   itemId: string;
-  /** HTML po DOMPurify - nigdy surowy HTML ze strony. */
+  /** HTML after DOMPurify - never raw HTML from the page. */
   html: string;
-  /** Ta sama tresc jako czysty tekst; zrodlo dla indeksu wyszukiwania. */
+  /** The same content as plain text; the source for the search index. */
   text: string;
   updatedAt: number;
 }
 
 /**
- * Zaznaczenie zakotwiczone w **tekscie**, nie w strukturze HTML.
+ * A selection anchored in the **text**, not in the HTML structure.
  *
- * `start`/`end` to offsety w czystym tekscie artykulu, a `prefix`/`suffix` to
- * kilkadziesiat znakow kontekstu. Gdy tresc lekko sie przesunie (inny podzial
- * akapitow, doklejona zajawka), offsety przestaja pasowac, ale cytat plus
- * kontekst wciaz pozwalaja znalezc miejsce - czego XPath by nie przezyl.
+ * `start`/`end` are offsets into the article's plain text, and `prefix`/`suffix`
+ * are a few dozen characters of context. When the content shifts slightly
+ * (different paragraph splits, an excerpt glued on), the offsets stop matching,
+ * but the quote plus its context still locate the spot - which an XPath would
+ * not survive.
  */
 export interface Highlight {
   id: string;
   itemId: string;
-  /** Zaznaczony tekst - zarazem tresc do odtworzenia i do skopiowania. */
+  /** The selected text - both what to restore and what to copy. */
   text: string;
   note: string | null;
   createdAt: number;
@@ -100,10 +100,10 @@ export interface Highlight {
 }
 
 /**
- * Automatyczna kopia metadanych. Swiadomie BEZ `contents` - tresci artykulow
- * to megabajty, a trzy ich kopie w tej samej bazie zjadalyby limit dysku
- * szybciej niz cokolwiek innego. Snapshot ratuje to, czego nie da sie odtworzyc
- * ponownym zapisem strony: tagi, ulubione, stan archiwum, daty.
+ * An automatic metadata backup. Deliberately WITHOUT `contents` - article
+ * bodies are megabytes, and three copies of them in the same database would eat
+ * the disk quota faster than anything else. A snapshot rescues what re-saving
+ * the page cannot recreate: tags, favorites, archive state, dates.
  */
 export interface Snapshot {
   id: string;
@@ -112,14 +112,13 @@ export interface Snapshot {
   items: SavedItem[];
 }
 
-/** Wiersz listy kopii - bez `items`, zeby UI nie wciagalo calej bazy. */
+/** A row in the backup list - without `items`, so the UI does not pull in the whole database. */
 export type SnapshotSummary = Omit<Snapshot, 'items'>;
 
 /**
- * Slad po skasowanej pozycji. Bez niego synchronizacja bylaby jednokierunkowa:
- * pozycja skasowana na jednym urzadzeniu wracalaby z drugiego przy najblizszym
- * scaleniu. Kluczem jest znormalizowany adres, bo `id` bywa rozne na roznych
- * urzadzeniach.
+ * A trace of a deleted item. Without it sync would be one-way: an item deleted
+ * on one device would come back from another at the next merge. The key is the
+ * normalized address, because `id` differs between devices.
  */
 export interface Tombstone {
   url: string;
@@ -132,7 +131,7 @@ export interface SavelyDB extends DBSchema {
     value: SavedItem;
     indexes: {
       savedAt: number;
-      /** keyPath: `archivedKey` - patrz komentarz przy polu. */
+      /** keyPath: `archivedKey` - see the comment on the field. */
       archived: number;
       url: string;
       tags: string;
@@ -159,20 +158,20 @@ export interface SavelyDB extends DBSchema {
 }
 
 // ---------------------------------------------------------------------------
-// Normalizacja URL-a
+// URL normalization
 // ---------------------------------------------------------------------------
 
-/** Parametry czysto sledzace - nie zmieniaja tresci, wiec psuja deduplikacje. */
+/** Purely tracking parameters - they do not change the content, so they break deduplication. */
 const TRACKING_PARAMS = new Set(['fbclid', 'gclid', 'ref']);
 const TRACKING_PREFIX = 'utm_';
 
 /**
- * Sprowadza adres do postaci porownywalnej: wycina `utm_*`, `fbclid`, `gclid`
- * i `ref`. Reszta (sciezka, pozostale parametry, fragment) zostaje bez zmian -
- * dla wielu stron fragment albo `?p=123` to jedyny identyfikator artykulu.
+ * Reduces an address to a comparable form: strips `utm_*`, `fbclid`, `gclid`
+ * and `ref`. The rest (path, remaining parameters, fragment) is left alone -
+ * on many sites the fragment or `?p=123` is the article's only identifier.
  *
- * Adres nie do sparsowania wraca przycienty, ale nietkniety: lepiej zapisac
- * cos dziwnego niz wywalic zapis.
+ * An unparseable address comes back trimmed but untouched: better to save
+ * something odd than to fail the save.
  */
 export function normalizeUrl(raw: string): string {
   let parsed: URL;
@@ -195,7 +194,7 @@ export function normalizeUrl(raw: string): string {
   return parsed.toString();
 }
 
-/** Tagi trzymamy w jednej postaci, zeby indeks multiEntry byl przewidywalny. */
+/** Tags are kept in one canonical form so the multiEntry index stays predictable. */
 export function normalizeTags(tags: readonly string[]): string[] {
   const seen = new Set<string>();
   for (const tag of tags) {
@@ -206,7 +205,7 @@ export function normalizeTags(tags: readonly string[]): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Schemat i migracje
+// Schema and migrations
 // ---------------------------------------------------------------------------
 
 export const DB_NAME = 'savely';
@@ -219,7 +218,7 @@ export type Migration = (
   tx: UpgradeTransaction,
 ) => void | Promise<void>;
 
-/** Wersja 1: pelny schemat od zera. */
+/** Version 1: the full schema from scratch. */
 const createSchemaV1: Migration = (db) => {
   const items = db.createObjectStore('items', { keyPath: 'id' });
   items.createIndex('savedAt', 'savedAt');
@@ -233,15 +232,15 @@ const createSchemaV1: Migration = (db) => {
   highlights.createIndex('itemId', 'itemId');
 };
 
-/** Ksztalt rekordow sprzed wersji 2 - pola dochodza dopiero w migracji. */
+/** The shape of records before version 2 - the fields arrive only in the migration. */
 type LegacyItem = Omit<SavedItem, 'readingProgress'> & { readingProgress?: number };
 type LegacyHighlight = Omit<Highlight, 'start' | 'end' | 'prefix' | 'suffix'> &
   Partial<Pick<Highlight, 'start' | 'end' | 'prefix' | 'suffix'>>;
 
 /**
- * Wersja 2: postep czytania na pozycjach i kotwice tekstowe na zaznaczeniach.
- * Migracja tylko **dokłada** pola z wartosciami domyslnymi - zaden istniejacy
- * rekord nie jest kasowany ani nadpisywany.
+ * Version 2: reading progress on items and text anchors on highlights. The
+ * migration only **adds** fields with default values - no existing record is
+ * deleted or overwritten.
  */
 const migrateToV2: Migration = async (_db, tx) => {
   const items = tx.objectStore('items');
@@ -259,7 +258,7 @@ const migrateToV2: Migration = async (_db, tx) => {
   while (highlight !== null) {
     const value = highlight.value as LegacyHighlight;
     if (typeof value.start !== 'number') {
-      // Bez offsetow zostaje sam cytat - `locate` i tak potrafi go odnalezc.
+      // Without offsets only the quote remains - `locate` can find it anyway.
       await highlight.update({ ...value, start: 0, end: 0, prefix: '', suffix: '' });
     }
     highlight = await highlight.continue();
@@ -267,22 +266,21 @@ const migrateToV2: Migration = async (_db, tx) => {
 };
 
 /**
- * Wersja 3: magazyn automatycznych kopii metadanych. Sam magazyn, zero
- * przepisywania istniejacych rekordow - pierwsza kopia powstanie z alarmu.
+ * Version 3: the store for automatic metadata backups. The store only, no
+ * rewriting of existing records - the first backup comes from the alarm.
  */
 const migrateToV3: Migration = (db) => {
   const snapshots = db.createObjectStore('snapshots', { keyPath: 'id' });
   snapshots.createIndex('createdAt', 'createdAt');
 };
 
-/** Ksztalt rekordow sprzed wersji 4. */
+/** The shape of records before version 4. */
 type LegacyItemV3 = Omit<SavedItem, 'updatedAt'> & { updatedAt?: number };
 
 /**
- * Wersja 4: `updatedAt` na pozycjach i magazyn grobow - jedno i drugie pod
- * synchronizacje. Istniejace rekordy dostaja `updatedAt` rowne `savedAt`:
- * pierwsze scalenie potraktuje je jak zmiany z chwili zapisu, czyli
- * najlagodniej, jak sie da.
+ * Version 4: `updatedAt` on items and the tombstone store - both for sync.
+ * Existing records get `updatedAt` equal to `savedAt`: the first merge will
+ * treat them as changes made at save time, which is as gentle as it gets.
  */
 const migrateToV4: Migration = async (db, tx) => {
   db.createObjectStore('tombstones', { keyPath: 'url' });
@@ -299,10 +297,10 @@ const migrateToV4: Migration = async (db, tx) => {
 };
 
 /**
- * Jawny switch po wersjach - jedyne miejsce, do ktorego dopisujemy migracje.
- * Kazda kolejna wersja to nowy `case`, ktory dostaje baze juz po poprzednich
- * krokach (patrz petla w `runMigrations`), wiec migracje sa przyrostowe
- * i nigdy nie odtwarzaja schematu od zera na istniejacych danych.
+ * An explicit switch over versions - the single place migrations are added to.
+ * Every new version is a new `case` that receives the database after the
+ * previous steps (see the loop in `runMigrations`), so migrations are
+ * incremental and never rebuild the schema from scratch over existing data.
  */
 function migrationFor(version: number): Migration | undefined {
   switch (version) {
@@ -320,16 +318,17 @@ function migrationFor(version: number): Migration | undefined {
 }
 
 /**
- * Wykonuje po kolei migracje od `oldVersion + 1` do `newVersion`.
+ * Runs the migrations in order, from `oldVersion + 1` up to `newVersion`.
  *
- * Celowo nie jest `async`: pierwszy krok musi ruszyc synchronicznie, jeszcze
- * w obsludze `upgradeneeded`. Po `await` transakcja versionchange bywa juz
- * nieaktywna dla operacji schematowych, a wtedy `createObjectStore` wybucha.
- * Kolejne kroki (migracje danych) ida lancuchem i czekaja tylko na zadania
- * IndexedDB, co trzyma transakcje przy zyciu.
+ * Deliberately not `async`: the first step has to start synchronously, still
+ * inside the `upgradeneeded` handler. After an `await` the versionchange
+ * transaction can already be inactive for schema operations, and then
+ * `createObjectStore` blows up. The later steps (data migrations) run as a
+ * chain and only wait on IndexedDB requests, which keeps the transaction alive.
  *
- * Brak migracji dla wersji = blad, a nie ciche pominiecie - inaczej schemat
- * rozjechalby sie z kodem i dowiedzielibysmy sie o tym dopiero na produkcji.
+ * A missing migration for a version is an error, not a silent skip - otherwise
+ * the schema would drift from the code and we would find out only in
+ * production.
  */
 function runMigrations(
   db: IDBPDatabase<SavelyDB>,
@@ -342,7 +341,7 @@ function runMigrations(
   for (let version = oldVersion + 1; version <= newVersion; version += 1) {
     const migration = overrides?.[version] ?? migrationFor(version);
     if (migration === undefined) {
-      return Promise.reject(new Error(`Brak migracji bazy "${DB_NAME}" do wersji ${version}.`));
+      return Promise.reject(new Error(`No migration of the "${DB_NAME}" database to version ${version}.`));
     }
     steps.push(migration);
   }
@@ -355,26 +354,27 @@ function runMigrations(
 }
 
 // ---------------------------------------------------------------------------
-// Polaczenie
+// Connection
 // ---------------------------------------------------------------------------
 
 export interface OpenDbOptions {
-  /** Nadpisanie wersji - do testow migracji. */
+  /** Version override - for migration tests. */
   version?: number;
-  /** Nadpisanie/uzupelnienie migracji - do testow migracji. */
+  /** Overriding/extending the migrations - for migration tests. */
   migrations?: Record<number, Migration>;
 }
 
 /**
- * Cache polaczenia. Przezywa tylko tyle, co modul: po uspieniu service workera
- * (CLAUDE.md 5.5) startujemy od nowa i to jest w porzadku - to cache, nie stan.
+ * The connection cache. It lives exactly as long as the module: after the
+ * service worker is suspended (CLAUDE.md 5.5) we start over, and that is fine -
+ * this is a cache, not state.
  */
 let connection: Promise<IDBPDatabase<SavelyDB>> | null = null;
 
 /**
- * Otwiera baze. Bez argumentow zwraca wspoldzielone, cache'owane polaczenie.
- * Z `options` otwiera polaczenie jednorazowe (nie cache'owane) - tak testujemy
- * migracje, nie dotykajac stanu reszty aplikacji.
+ * Opens the database. With no arguments it returns the shared, cached
+ * connection. With `options` it opens a one-off (uncached) connection - that is
+ * how migrations are tested without touching the rest of the app's state.
  */
 export async function openDb(options?: OpenDbOptions): Promise<IDBPDatabase<SavelyDB>> {
   const version = options?.version ?? DB_VERSION;
@@ -385,23 +385,23 @@ export async function openDb(options?: OpenDbOptions): Promise<IDBPDatabase<Save
       upgrade(db, oldVersion, newVersion, tx) {
         runMigrations(db, tx, oldVersion, newVersion ?? version, overrides).catch(
           (error: unknown) => {
-            // Przerwana transakcja versionchange = otwarcie bazy konczy sie
-            // bledem i zostajemy na starej wersji. Lepsze niz polowa schematu.
-            console.error('[savely] migracja bazy nie powiodla sie:', error);
-            // Po `abort()` odrzuci sie takze `tx.done`; przejmujemy je tutaj,
-            // zeby nie zostawic nieobsluzonego odrzucenia w tle.
+            // An aborted versionchange transaction = opening the database ends
+            // in an error and we stay on the old version. Better than half a schema.
+            console.error('[savely] the database migration failed:', error);
+            // After `abort()` the `tx.done` promise rejects as well; we take it
+            // over here so no unhandled rejection is left in the background.
             void tx.done.catch(() => undefined);
             try {
               tx.abort();
             } catch {
-              // Transakcja mogla juz sama wyladowac w bledzie - nic nie robimy.
+              // The transaction may have failed on its own - nothing to do.
             }
           },
         );
       },
       blocking() {
-        // Inny kontekst chce podniesc wersje - oddajemy polaczenie, zeby
-        // upgrade nie utknal na `blocked`.
+        // Another context wants to raise the version - we release the
+        // connection so the upgrade does not get stuck on `blocked`.
         void closeDb();
       },
     });
@@ -412,7 +412,7 @@ export async function openDb(options?: OpenDbOptions): Promise<IDBPDatabase<Save
   return connection;
 }
 
-/** Zamyka wspoldzielone polaczenie (testy, reset po migracji). */
+/** Closes the shared connection (tests, a reset after a migration). */
 export async function closeDb(): Promise<void> {
   const pending = connection;
   connection = null;
@@ -420,7 +420,7 @@ export async function closeDb(): Promise<void> {
   (await pending).close();
 }
 
-/** Kasuje cala baze. Uzywane w testach i przez przyszle "usun moje dane". */
+/** Deletes the whole database. Used in tests and by "delete my data". */
 export async function deleteDb(): Promise<void> {
   await closeDb();
   await deleteDB(DB_NAME);
@@ -431,9 +431,9 @@ export async function deleteDb(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export interface SaveItemInput {
-  /** Adres strony (oryginal). */
+  /** The page address (the original). */
   url: string;
-  /** Adres po przekierowaniach, jesli inny niz `url`. */
+  /** The address after redirects, if different from `url`. */
   resolvedUrl?: string;
   title?: string;
   excerpt?: string;
@@ -445,7 +445,7 @@ export interface SaveItemInput {
   tags?: string[];
   status?: ItemStatus;
   contentHash?: string | null;
-  /** Do testow i importu - domyslnie `Date.now()`. */
+  /** For tests and imports - defaults to `Date.now()`. */
   savedAt?: number;
 }
 
@@ -472,10 +472,10 @@ export type ItemPatch = Partial<
 export interface ItemFilter {
   archived?: boolean;
   favorite?: boolean;
-  /** `true` = tylko nieprzeczytane (`readAt === null`). */
+  /** `true` = unread only (`readAt === null`). */
   unread?: boolean;
   status?: ItemStatus;
-  /** Koniunkcja - pozycja musi miec wszystkie podane tagi. */
+  /** A conjunction - the item must carry every listed tag. */
   tags?: string[];
 }
 
@@ -485,19 +485,19 @@ export interface ListItemsOptions {
   filter?: ItemFilter;
   sort?: ItemSort;
   limit?: number;
-  /** Token z poprzedniej strony (`nextCursor`). */
+  /** The token from the previous page (`nextCursor`). */
   cursor?: string | null;
 }
 
 export interface ItemPage {
   items: SavedItem[];
-  /** `null` = koniec listy. */
+  /** `null` = the end of the list. */
   nextCursor: string | null;
 }
 
 const DEFAULT_LIMIT = 50;
 
-/** Utrzymuje pola pochodne (klucz indeksu) w jednym miejscu. */
+/** Keeps the derived fields (the index key) in one place. */
 function withDerived(item: Omit<SavedItem, 'archivedKey'>): SavedItem {
   return { ...item, archivedKey: item.archived ? 1 : 0 };
 }
@@ -516,9 +516,9 @@ function createItem(input: SaveItemInput, now: number): SavedItem {
     wordCount,
     estReadingMinutes: input.estReadingMinutes ?? estimateReadingMinutes(wordCount),
     savedAt: input.savedAt ?? now,
-    // Jawny `savedAt` oznacza rekord historyczny (import, odtworzenie stanu),
-    // wiec i ostatnia zmiana jest historyczna - inaczej stary wpis wygrywalby
-    // przy synchronizacji z nowszymi danymi po drugiej stronie.
+    // An explicit `savedAt` marks a historical record (an import, a restored
+    // state), so the last change is historical too - otherwise an old entry
+    // would win against newer data on the other side of a sync.
     updatedAt: input.savedAt ?? now,
     readAt: null,
     archived: false,
@@ -531,9 +531,10 @@ function createItem(input: SaveItemInput, now: number): SavedItem {
 }
 
 /**
- * Ponowny zapis znanego adresu odswieza metadane i podnosi `savedAt` (pozycja
- * wraca na gore listy), ale NIE dotyka stanu uzytkownika: `archived`,
- * `favorite` i `readAt` zostaja, a tagi sa sumowane, nie nadpisywane.
+ * Re-saving a known address refreshes the metadata and bumps `savedAt` (the
+ * item returns to the top of the list), but does NOT touch user state:
+ * `archived`, `favorite` and `readAt` stay, and tags are unioned, not
+ * overwritten.
  */
 function refreshItem(existing: SavedItem, input: SaveItemInput, now: number): SavedItem {
   const wordCount = input.wordCount ?? existing.wordCount;
@@ -561,9 +562,9 @@ function refreshItem(existing: SavedItem, input: SaveItemInput, now: number): Sa
 }
 
 /**
- * Zapisuje pozycje albo odswieza istniejaca o tym samym (znormalizowanym)
- * adresie. Wyszukanie duplikatu i zapis dziela jedna transakcje, wiec dwa
- * rownolegle zapisy tego samego URL-a nie zrobia dwoch wpisow.
+ * Saves an item, or refreshes an existing one with the same (normalized)
+ * address. Looking up the duplicate and writing share one transaction, so two
+ * concurrent saves of the same URL will not create two entries.
  */
 export async function saveItem(input: SaveItemInput): Promise<SavedItem> {
   const db = await openDb();
@@ -584,7 +585,7 @@ export async function getItem(id: string): Promise<SavedItem | undefined> {
   return db.get('items', id);
 }
 
-/** Pozycja po adresie - adres jest normalizowany, wiec `?utm_*` nie przeszkadza. */
+/** An item by address - the address is normalized, so `?utm_*` does not get in the way. */
 export async function getItemByUrl(url: string): Promise<SavedItem | undefined> {
   const db = await openDb();
   return db.getFromIndex('items', 'url', normalizeUrl(url));
@@ -617,8 +618,8 @@ function matchesFilter(
 }
 
 /**
- * Zbior id pasujacych do wszystkich tagow, liczony z indeksu multiEntry.
- * `null` = brak filtra po tagach (nie zawezamy).
+ * The set of ids matching every tag, computed from the multiEntry index.
+ * `null` = no tag filter (nothing is narrowed down).
  */
 async function idsForTags(
   tx: IDBPTransaction<SavelyDB, ['items'], 'readonly' | 'readwrite'>,
@@ -630,7 +631,7 @@ async function idsForTags(
   const index = tx.objectStore('items').index('tags');
   let result: Set<string> | null = null;
   for (const tag of normalized) {
-    // Jawna adnotacja: przy unii trybow transakcji idb gubi typ klucza.
+    // An explicit annotation: with a union of transaction modes idb loses the key type.
     const tagged: string[] = await index.getAllKeys(tag);
     const keys = new Set<string>(tagged);
 
@@ -649,9 +650,9 @@ async function idsForTags(
 }
 
 /**
- * Strona listy, sortowana po `savedAt` z indeksu i paginowana keysetem
- * (`savedAt` + `id`), nie offsetem - dopisanie pozycji w trakcie przewijania
- * nie przesuwa okna i nie gubi wierszy.
+ * A page of the list, sorted by `savedAt` from the index and paginated by
+ * keyset (`savedAt` + `id`) rather than by offset - adding an item mid-scroll
+ * does not shift the window or drop rows.
  */
 export async function listItems(options: ListItemsOptions = {}): Promise<ItemPage> {
   const filter = options.filter ?? {};
@@ -682,7 +683,7 @@ export async function listItems(options: ListItemsOptions = {}): Promise<ItemPag
 
     if (skipping && from !== null) {
       if (item.savedAt !== from.savedAt) {
-        // Wyszlismy poza blok o tym samym `savedAt` - dalej juz nie pomijamy.
+        // We left the block sharing one `savedAt` - stop skipping from here.
         skipping = false;
       } else if (sort === 'newest' ? item.id >= from.id : item.id <= from.id) {
         cursor = await cursor.continue();
@@ -698,7 +699,7 @@ export async function listItems(options: ListItemsOptions = {}): Promise<ItemPag
 
   await tx.done;
 
-  // Kursor oddajemy tylko wtedy, gdy w indeksie zostalo cos niezobaczonego.
+  // A cursor is returned only when something unseen is left in the index.
   const last = items[items.length - 1];
   const nextCursor =
     cursor !== null && last !== undefined && items.length === limit ? encodeCursor(last) : null;
@@ -706,14 +707,14 @@ export async function listItems(options: ListItemsOptions = {}): Promise<ItemPag
   return { items, nextCursor };
 }
 
-/** Nadpisuje wskazane pola. Adresu nie da sie zmienic - trzyma dedup w ryzach. */
+/** Overwrites the given fields. The address cannot be changed - that keeps dedup honest. */
 export async function updateItem(id: string, patch: ItemPatch): Promise<SavedItem> {
   const db = await openDb();
   const tx = db.transaction('items', 'readwrite');
   const existing = await tx.store.get(id);
   if (existing === undefined) {
     await tx.done;
-    throw new Error(`Nie ma pozycji o id ${id}.`);
+    throw new Error(`There is no item with id ${id}.`);
   }
 
   const merged: SavedItem = withDerived({
@@ -729,9 +730,9 @@ export async function updateItem(id: string, patch: ItemPatch): Promise<SavedIte
 }
 
 /**
- * Kasuje pozycje razem z trescia i zaznaczeniami - wszystko w jednej
- * transakcji, zeby nie zostaly osierocone rekordy w `contents`/`highlights`.
- * Zwraca `false`, gdy pozycji nie bylo.
+ * Deletes an item together with its content and highlights - all in one
+ * transaction, so no orphaned records are left in `contents`/`highlights`.
+ * Returns `false` when the item did not exist.
  */
 export async function deleteItem(id: string): Promise<boolean> {
   const db = await openDb();
@@ -747,9 +748,9 @@ export async function deleteItem(id: string): Promise<boolean> {
       await cursor.delete();
       cursor = await cursor.continue();
     }
-    // Grob w tej samej transakcji, co kasowanie - inaczej przerwanie miedzy
-    // nimi zostawiloby usuniecie, o ktorym synchronizacja nigdy by sie nie
-    // dowiedziala, i pozycja wrocilaby z drugiego urzadzenia.
+    // The tombstone goes in the same transaction as the deletion - otherwise
+    // an interruption between them would leave a deletion sync never hears
+    // about, and the item would come back from another device.
     await tx.objectStore('tombstones').put({ url: existing.url, deletedAt: Date.now() });
   }
 
@@ -763,7 +764,7 @@ export async function countItems(filter: ItemFilter = {}): Promise<number> {
   const keys = Object.keys(filter);
   const tags = normalizeTags(filter.tags ?? []);
 
-  // Sciezki liczone wprost z indeksu - bez skanowania rekordow.
+  // Paths counted straight from the index - no record scanning.
   if (keys.length === 0) return tx.store.count();
   if (keys.length === 1 && filter.archived !== undefined) {
     return tx.store.index('archived').count(filter.archived ? 1 : 0);
@@ -789,16 +790,16 @@ export async function countItems(filter: ItemFilter = {}): Promise<number> {
 // ---------------------------------------------------------------------------
 
 export interface SetContentInput {
-  /** HTML juz przepuszczony przez DOMPurify. */
+  /** HTML that already went through DOMPurify. */
   html: string;
   text: string;
   contentHash?: string;
 }
 
 /**
- * Zapisuje tresc i w tej samej transakcji przestawia pozycje na `ready`
- * (oraz zapisuje `contentHash`, jesli podany). Dzieki temu nie ma stanu
- * posredniego, w ktorym tresc juz jest, a pozycja wciaz wisi jako `pending`.
+ * Stores the content and, in the same transaction, flips the item to `ready`
+ * (and writes `contentHash` when given). That leaves no intermediate state in
+ * which the content is already there while the item still hangs as `pending`.
  */
 export async function setContent(itemId: string, input: SetContentInput): Promise<ItemContent> {
   const db = await openDb();
@@ -806,7 +807,7 @@ export async function setContent(itemId: string, input: SetContentInput): Promis
   const item = await tx.objectStore('items').get(itemId);
   if (item === undefined) {
     await tx.done;
-    throw new Error(`Nie ma pozycji o id ${itemId} - nie zapisuje tresci.`);
+    throw new Error(`There is no item with id ${itemId} - not storing the content.`);
   }
 
   const content: ItemContent = {
@@ -835,14 +836,14 @@ export async function getContent(itemId: string): Promise<ItemContent | undefine
   return db.get('contents', itemId);
 }
 
-/** Same klucze - do budowania indeksu wyszukiwania porcjami, bez wciagania tresci. */
+/** Keys only - for building the search index in batches without pulling in the content. */
 export async function listContentIds(): Promise<string[]> {
   const db = await openDb();
   return db.getAllKeys('contents');
 }
 
-/** Porcja tresci. Wolane w petli po `listContentIds`, zeby nie trzymac
- *  jednej transakcji przez cala baze i nie blokowac UI. */
+/** A batch of content. Called in a loop over `listContentIds`, so one
+ *  transaction is not held across the whole database and the UI is not blocked. */
 export async function getContents(itemIds: readonly string[]): Promise<ItemContent[]> {
   const db = await openDb();
   const tx = db.transaction('contents', 'readonly');
@@ -876,7 +877,7 @@ export async function addHighlight(input: AddHighlightInput): Promise<Highlight>
   const item = await tx.objectStore('items').get(input.itemId);
   if (item === undefined) {
     await tx.done;
-    throw new Error(`Nie ma pozycji o id ${input.itemId} - nie zapisuje zaznaczenia.`);
+    throw new Error(`There is no item with id ${input.itemId} - not storing the highlight.`);
   }
 
   const highlight: Highlight = {
@@ -897,14 +898,14 @@ export async function addHighlight(input: AddHighlightInput): Promise<Highlight>
   return highlight;
 }
 
-/** Zaznaczenia jednej pozycji, w kolejnosci dodania. */
+/** One item's highlights, in the order they were added. */
 export async function listHighlights(itemId: string): Promise<Highlight[]> {
   const db = await openDb();
   const highlights = await db.getAllFromIndex('highlights', 'itemId', IDBKeyRange.only(itemId));
   return highlights.sort((a, b) => a.createdAt - b.createdAt);
 }
 
-/** Notatka przy zaznaczeniu. Rzuca, gdy zaznaczenia juz nie ma. */
+/** The note on a highlight. Throws when the highlight is gone. */
 export async function updateHighlight(
   id: string,
   patch: Partial<Pick<Highlight, 'note'>>,
@@ -914,7 +915,7 @@ export async function updateHighlight(
   const existing = await tx.store.get(id);
   if (existing === undefined) {
     await tx.done;
-    throw new Error(`Nie ma zaznaczenia o id ${id}.`);
+    throw new Error(`There is no highlight with id ${id}.`);
   }
 
   const merged: Highlight = { ...existing, ...patch };
@@ -933,25 +934,25 @@ export async function deleteHighlight(id: string): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
-// Zrzut i scalanie (eksport / import / kopie)
+// Dump and merge (export / import / backups)
 // ---------------------------------------------------------------------------
 
-/** Pelna zawartosc bazy bez snapshotow - to, co idzie do pliku kopii. */
+/** The full database contents without snapshots - what goes into a backup file. */
 export interface DatabaseDump {
   items: SavedItem[];
   contents: ItemContent[];
   highlights: Highlight[];
 }
 
-/** Co sie stalo przy scalaniu. Liczby ida wprost do raportu w opcjach. */
+/** What happened during a merge. The numbers go straight into the options report. */
 export interface MergeOutcome {
-  /** Pozycje, ktorych wczesniej nie bylo. */
+  /** Items that did not exist before. */
   added: number;
-  /** Pozycje rozpoznane po znormalizowanym adresie i uzupelnione. */
+  /** Items recognized by their normalized address and filled in. */
   merged: number;
   contents: number;
   highlights: number;
-  /** Rekordy pominiete juz na poziomie bazy (np. tresc bez pozycji). */
+  /** Records skipped at the database level (content with no item, say). */
   skipped: number;
 }
 
@@ -964,8 +965,8 @@ const EMPTY_OUTCOME: MergeOutcome = {
 };
 
 /**
- * Caly zrzut w jednej transakcji tylko-do-odczytu, zeby eksport byl spojnym
- * obrazem bazy, a nie trzema odczytami z roznych chwil.
+ * The whole dump in one read-only transaction, so an export is a consistent
+ * picture of the database rather than three reads from three different moments.
  */
 export async function exportAll(): Promise<DatabaseDump> {
   const db = await openDb();
@@ -979,7 +980,7 @@ export async function exportAll(): Promise<DatabaseDump> {
   return { items, contents, highlights };
 }
 
-/** Same metadane, najnowsze na gorze - do eksportu zakladek i do snapshotu. */
+/** Metadata only, newest first - for the bookmarks export and for a snapshot. */
 export async function listAllItems(): Promise<SavedItem[]> {
   const db = await openDb();
   const items = await db.getAll('items');
@@ -987,12 +988,12 @@ export async function listAllItems(): Promise<SavedItem[]> {
 }
 
 /**
- * Scala importowana pozycje z juz istniejaca.
+ * Merges an imported item into an existing one.
  *
- * Zasada: stan uzytkownika po tej stronie jest wazniejszy niz plik. Import
- * moze DOLOZYC (tagi, brakujace metadane, wczesniejsza date zapisu, ulubione),
- * ale nie moze odebrac - nie odarchiwizuje, nie kasuje tagow, nie cofa
- * przeczytania. Inaczej przywrocenie starej kopii cofaloby biezaca prace.
+ * The rule: user state on this side outweighs the file. An import may ADD
+ * (tags, missing metadata, an earlier save date, a favorite), but may not take
+ * away - it does not un-archive, does not drop tags, does not undo a read.
+ * Otherwise restoring an old backup would undo current work.
  */
 function mergeImported(existing: SavedItem, incoming: SavedItem): SavedItem {
   const wordCount = existing.wordCount === 0 ? incoming.wordCount : existing.wordCount;
@@ -1007,9 +1008,9 @@ function mergeImported(existing: SavedItem, incoming: SavedItem): SavedItem {
     wordCount,
     estReadingMinutes:
       existing.estReadingMinutes === 0 ? incoming.estReadingMinutes : existing.estReadingMinutes,
-    // Data zapisu to fakt historyczny - wygrywa wczesniejsza.
+    // The save date is a historical fact - the earlier one wins.
     savedAt: Math.min(existing.savedAt, incoming.savedAt),
-    // Scalenie to zmiana lokalna - ma pojechac dalej przy nastepnym sync.
+    // A merge is a local change - it should travel on at the next sync.
     updatedAt: Date.now(),
     readAt: existing.readAt ?? incoming.readAt,
     favorite: existing.favorite || incoming.favorite,
@@ -1018,19 +1019,19 @@ function mergeImported(existing: SavedItem, incoming: SavedItem): SavedItem {
   });
 }
 
-/** Dwa zaznaczenia o tym samym cytacie i offsetach to to samo zaznaczenie. */
+/** Two highlights with the same quote and offsets are the same highlight. */
 function sameHighlight(a: Highlight, b: Highlight): boolean {
   return a.text === b.text && a.start === b.start && a.end === b.end;
 }
 
 /**
- * Wpisuje zrzut do bazy w JEDNEJ transakcji: albo wchodzi calosc, albo nic.
- * Blad w polowie (np. brak miejsca) cofa wszystko - nie zostawiamy polowy
- * importu ani tresci bez pozycji.
+ * Writes a dump into the database in ONE transaction: either all of it lands or
+ * none. A failure halfway through (running out of space, say) rolls everything
+ * back - we never leave half an import or content without an item.
  *
- * Rekordy musza byc juz zwalidowane (patrz `src/lib/backup.ts`); tutaj
- * pilnujemy wylacznie spojnosci bazy: deduplikacji po adresie, kolizji
- * identyfikatorow i sierot w `contents`/`highlights`.
+ * The records must already be validated (see `src/lib/backup.ts`); here we
+ * guard only database consistency: deduplication by address, identifier
+ * collisions and orphans in `contents`/`highlights`.
  */
 export async function importDump(dump: DatabaseDump): Promise<MergeOutcome> {
   if (dump.items.length === 0 && dump.contents.length === 0 && dump.highlights.length === 0) {
@@ -1045,20 +1046,21 @@ export async function importDump(dump: DatabaseDump): Promise<MergeOutcome> {
     await tx.done;
     return outcome;
   } catch (error) {
-    // Blad rzucony w trakcie (np. rekord nie do sklonowania) NIE przerywa sam
-    // transakcji - bez tego `abort` IndexedDB domknelaby to, co juz weszlo,
-    // i zostalaby polowa importu. Stad jawne wycofanie.
+    // An error thrown mid-way (an unclonable record, say) does NOT abort the
+    // transaction by itself - without this `abort` IndexedDB would commit what
+    // already landed and half an import would remain. Hence the explicit
+    // rollback.
     try {
       tx.abort();
     } catch {
-      // Transakcja mogla juz sama wyladowac w bledzie - wtedy nie ma czego cofac.
+      // The transaction may have failed on its own - then there is nothing to roll back.
     }
     await tx.done.catch(() => undefined);
     throw error;
   }
 }
 
-/** Wlasciwe scalanie. Wolane wylacznie z `importDump`, wewnatrz jego transakcji. */
+/** The actual merge. Called only from `importDump`, inside its transaction. */
 async function writeDump(
   tx: IDBPTransaction<SavelyDB, ('items' | 'contents' | 'highlights')[], 'readwrite'>,
   dump: DatabaseDump,
@@ -1068,7 +1070,7 @@ async function writeDump(
   const highlights = tx.objectStore('highlights');
 
   const outcome: MergeOutcome = { ...EMPTY_OUTCOME };
-  /** id z pliku -> id w bazie; tym mapujemy tresci i zaznaczenia. */
+  /** id from the file -> id in the database; content and highlights are mapped through it. */
   const target = new Map<string, string>();
 
   for (const incoming of dump.items) {
@@ -1081,8 +1083,9 @@ async function writeDump(
       continue;
     }
 
-    // Identyfikator z pliku moze juz nalezec do INNEJ pozycji - wtedy zapis
-    // pod tym kluczem nadpisalby cudzy rekord. Bierzemy wtedy nowe id.
+    // An identifier from the file may already belong to a DIFFERENT item -
+    // writing under that key would overwrite someone else's record. In that
+    // case we take a fresh id.
     const collision = await items.get(incoming.id);
     const id = collision === undefined ? incoming.id : crypto.randomUUID();
 
@@ -1097,7 +1100,7 @@ async function writeDump(
       outcome.skipped += 1;
       continue;
     }
-    // Lokalna tresc jest swiezsza z definicji - importem jej nie nadpisujemy.
+    // Local content is fresher by definition - an import does not overwrite it.
     if ((await contents.get(id)) !== undefined) {
       outcome.skipped += 1;
       continue;
@@ -1135,17 +1138,17 @@ async function writeDump(
 // snapshots
 // ---------------------------------------------------------------------------
 
-/** Ile kopii trzymamy. Czwarta wypycha najstarsza. */
+/** How many backups we keep. The fourth pushes out the oldest. */
 export const SNAPSHOT_LIMIT = 3;
 
 /**
- * Odstep miedzy automatycznymi kopiami. Krocej niz doba, bo alarm potrafi
- * odpalic z poslizgiem, a przegapiony dzien boli bardziej niz kopia zrobiona
- * po dwudziestu godzinach.
+ * The gap between automatic backups. Shorter than a day, because the alarm can
+ * fire late, and a missed day hurts more than a backup taken after twenty
+ * hours.
  */
 export const SNAPSHOT_INTERVAL_MS = 20 * 60 * 60 * 1000;
 
-/** Kopia metadanych + przyciecie do `SNAPSHOT_LIMIT`, w jednej transakcji. */
+/** A metadata backup + trimming to `SNAPSHOT_LIMIT`, in one transaction. */
 export async function createSnapshot(now = Date.now()): Promise<Snapshot> {
   const db = await openDb();
   const tx = db.transaction(['items', 'snapshots'], 'readwrite');
@@ -1161,7 +1164,7 @@ export async function createSnapshot(now = Date.now()): Promise<Snapshot> {
   const snapshots = tx.objectStore('snapshots');
   await snapshots.put(snapshot);
 
-  // Klucze z indeksu `createdAt` ida od najstarszej - nadmiar scinamy z przodu.
+  // Keys from the `createdAt` index run oldest-first - the excess is cut off the front.
   const byAge = await snapshots.index('createdAt').getAllKeys();
   for (const key of byAge.slice(0, Math.max(0, byAge.length - SNAPSHOT_LIMIT))) {
     await snapshots.delete(key);
@@ -1172,8 +1175,9 @@ export async function createSnapshot(now = Date.now()): Promise<Snapshot> {
 }
 
 /**
- * Kopia dnia. `null`, gdy nie ma czego kopiowac albo ostatnia jest swieza -
- * alarm potrafi odpalic czesciej niz raz na dobe (wybudzenie, reinstalacja).
+ * The daily backup. `null` when there is nothing to back up or the last one is
+ * still fresh - the alarm can fire more than once a day (a wake-up, a
+ * reinstall).
  */
 export async function createSnapshotIfDue(now = Date.now()): Promise<Snapshot | null> {
   const db = await openDb();
@@ -1190,7 +1194,7 @@ export async function createSnapshotIfDue(now = Date.now()): Promise<Snapshot | 
   return createSnapshot(now);
 }
 
-/** Podsumowania kopii, najnowsze na gorze. Bez `items` - patrz `SnapshotSummary`. */
+/** Backup summaries, newest first. Without `items` - see `SnapshotSummary`. */
 export async function listSnapshots(): Promise<SnapshotSummary[]> {
   const db = await openDb();
   const snapshots = await db.getAll('snapshots');
@@ -1205,18 +1209,18 @@ export async function getSnapshot(id: string): Promise<Snapshot | undefined> {
 }
 
 /**
- * Przywraca kopie przez to samo scalanie, co import: doklada brakujace
- * pozycje i uzupelnia istniejace, ale niczego nie kasuje. Przywrocenie kopii
- * nie moze zabrac tego, co doszlo po jej zrobieniu.
+ * Restores a backup through the same merge as an import: it adds missing items
+ * and fills in existing ones, but deletes nothing. Restoring a backup must not
+ * take away what arrived after it was made.
  */
 export async function restoreSnapshot(id: string): Promise<MergeOutcome> {
   const snapshot = await getSnapshot(id);
-  if (snapshot === undefined) throw new Error(`Nie ma kopii o id ${id}.`);
+  if (snapshot === undefined) throw new Error(`There is no backup with id ${id}.`);
   return importDump({ items: snapshot.items, contents: [], highlights: [] });
 }
 
 // ---------------------------------------------------------------------------
-// Statystyki i kasowanie
+// Statistics and wiping
 // ---------------------------------------------------------------------------
 
 export interface DataStats {
@@ -1229,7 +1233,7 @@ export interface DataStats {
   snapshots: number;
 }
 
-/** Liczniki na strone opcji. Jeden przebieg po `items`, reszta z `count()`. */
+/** Counters for the options page. One pass over `items`, the rest from `count()`. */
 export async function dataStats(): Promise<DataStats> {
   const db = await openDb();
   const tx = db.transaction(['items', 'contents', 'highlights', 'snapshots'], 'readonly');
@@ -1259,22 +1263,22 @@ export async function dataStats(): Promise<DataStats> {
 }
 
 /**
- * "Usun wszystkie dane" - kasujemy cala baze zamiast czyscic magazyny po
- * kolei. Przy okazji znika wszystko, o czym ten kod moglby zapomniec.
+ * "Delete all data" - we drop the whole database instead of clearing the stores
+ * one by one. That also removes anything this code might forget about.
  */
 export async function clearAllData(): Promise<void> {
   await deleteDb();
 }
 
 // ---------------------------------------------------------------------------
-// Synchronizacja: odczyt stanu i zapis wyniku scalenia
+// Sync: reading the state and writing the merge result
 // ---------------------------------------------------------------------------
 
 /**
- * Stan lokalny w postaci, w ktorej porownuje sie go ze zdalnym.
+ * The local state in the shape it is compared against the remote one.
  *
- * Kluczem jest **znormalizowany adres**, nie `id`: identyfikatory sa lokalne
- * dla urzadzenia i po dwoch stronach synchronizacji nigdy nie beda te same.
+ * The key is the **normalized address**, not `id`: identifiers are local to a
+ * device and will never match across the two sides of a sync.
  */
 export interface SyncLocalState {
   items: SavedItem[];
@@ -1283,18 +1287,18 @@ export interface SyncLocalState {
   tombstones: Tombstone[];
 }
 
-/** Jedna pozycja do zapisania po scaleniu. `null` = ta czesc bez zmian. */
+/** One item to write after the merge. `null` = that part is unchanged. */
 export interface SyncItemWrite {
-  /** `id` i `archivedKey` ustala baza - reszta przychodzi ze scalenia. */
+  /** `id` and `archivedKey` are set by the database - the rest comes from the merge. */
   item: Omit<SavedItem, 'id' | 'archivedKey'>;
   content: { html: string; text: string; updatedAt: number } | null;
-  /** Pelny, scalony zbior zaznaczen tej pozycji. */
+  /** The complete, merged set of this item's highlights. */
   highlights: Omit<Highlight, 'id' | 'itemId'>[] | null;
 }
 
 export interface SyncWritePlan {
   writes: SyncItemWrite[];
-  /** Adresy pozycji, ktore zniknely po drugiej stronie (grob jest nowszy). */
+  /** Addresses of items that disappeared on the other side (the tombstone is newer). */
   deleteUrls: string[];
   tombstones: Tombstone[];
 }
@@ -1307,7 +1311,7 @@ export interface SyncWriteOutcome {
   highlights: number;
 }
 
-/** Caly stan potrzebny do scalenia, w jednej transakcji tylko-do-odczytu. */
+/** All the state a merge needs, in one read-only transaction. */
 export async function collectForSync(): Promise<SyncLocalState> {
   const db = await openDb();
   const tx = db.transaction(['items', 'contents', 'highlights', 'tombstones'], 'readonly');
@@ -1327,12 +1331,12 @@ export async function listTombstones(): Promise<Tombstone[]> {
 }
 
 /**
- * Zapisuje wynik scalenia. Jedna transakcja na cztery magazyny: przerwanie
- * w polowie cofa calosc, wiec nie zostaje baza w stanie "pol zsynchronizowana"
- * (ta sama zasada, co przy imporcie).
+ * Writes the merge result. One transaction across four stores: an interruption
+ * halfway rolls everything back, so the database is never left "half synced"
+ * (the same rule as for an import).
  *
- * Scalanie jest w `src/lib/sync/merge.ts` - tutaj wylacznie zapis tego, co tamto
- * postanowilo, plus mapowanie adres -> lokalne `id`.
+ * The merging itself lives in `src/lib/sync/merge.ts` - here we only write what
+ * it decided, plus the address -> local `id` mapping.
  */
 export async function applySync(plan: SyncWritePlan): Promise<SyncWriteOutcome> {
   const db = await openDb();
@@ -1346,7 +1350,7 @@ export async function applySync(plan: SyncWritePlan): Promise<SyncWriteOutcome> 
     try {
       tx.abort();
     } catch {
-      // Transakcja mogla juz sama wyladowac w bledzie.
+      // The transaction may have failed on its own.
     }
     await tx.done.catch(() => undefined);
     throw error;
@@ -1388,8 +1392,8 @@ async function writeSync(
     }
 
     if (write.highlights !== null) {
-      // Scalony zbior wchodzi w calosci: `merge` oddaje go tylko wtedy, gdy
-      // rozni sie od lokalnego, wiec nie ma tu ruchu bez powodu.
+      // The merged set goes in whole: `merge` returns it only when it differs
+      // from the local one, so nothing moves here without a reason.
       let cursor = await highlights.index('itemId').openCursor(IDBKeyRange.only(id));
       while (cursor !== null) {
         await cursor.delete();

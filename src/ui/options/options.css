@@ -1,6 +1,7 @@
 /*
- * Strona opcji. Te same zmienne co lista - jeden wygląd w całym rozszerzeniu,
- * bez frameworka CSS (CLAUDE.md 2). Musi być czytelna przy 360 px, bo na
+ * The options page. The same variables as the list - one look across the whole
+ * extension, with no CSS framework (CLAUDE.md 2). It has to stay readable at
+ * 360 px, because on
  * Firefoksie na Androidzie to jedyne miejsce z eksportem i importem.
  */
 :root {
@@ -69,7 +70,7 @@ body {
   gap: 16px;
 }
 
-/* --- karty sekcji --- */
+/* --- section cards --- */
 
 .card {
   padding: 16px;
@@ -258,8 +259,8 @@ code {
 }
 
 /*
- * Ostrzeżenie o tym, gdzie lądują dane, ma być widoczne zanim ktokolwiek wklei
- * token - stąd ramka, a nie szary drobny druk.
+ * The warning about where the data lands must be visible before anyone pastes
+ * a token - hence a framed box rather than small grey print.
  */
 .warn {
   margin: 0 0 12px;

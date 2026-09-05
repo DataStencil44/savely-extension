@@ -1,15 +1,16 @@
 /**
- * Silnik synchronizacji: pull -> scal -> zapisz lokalnie -> push.
+ * The sync engine: pull -> merge -> write locally -> push.
  *
- * Kolejność nie jest przypadkowa. Najpierw ściągamy stan zdalny, potem scalamy
- * go z lokalnym w pamięci (`merge.ts`, czysta funkcja), potem zapisujemy wynik
- * do bazy w jednej transakcji, a dopiero na końcu wysyłamy. Gdy cokolwiek
- * padnie po drodze, gorszy scenariusz to „lokalnie zaktualizowane, niewysłane" -
- * następne uruchomienie to dokończy. Odwrotna kolejność (najpierw push) mogłaby
- * zostawić po drugiej stronie stan, którego nigdzie nie ma.
+ * The order is not accidental. First we fetch the remote state, then merge it
+ * with the local one in memory (`merge.ts`, a pure function), then write the
+ * result to the database in a single transaction, and only at the end push.
+ * If anything fails along the way, the worst case is "updated locally, not
+ * pushed" - the next run finishes it. The reverse order (push first) could
+ * leave a state on the other side that exists nowhere else.
  *
- * Stan synchronizacji siedzi w `storage.local`, nie w `storage.sync`: dotyczy
- * TEGO urządzenia, a poświadczenia providera nie mają prawa opuścić maszyny.
+ * The sync state lives in `storage.local`, not `storage.sync`: it describes
+ * THIS device, and the provider's credentials have no business leaving the
+ * machine.
  */
 import browser from 'webextension-polyfill';
 
@@ -21,21 +22,21 @@ import type { SyncPayload, SyncProvider, SyncReport } from './types';
 
 const STATE_KEY = 'sync-state';
 
-/** Co ile minut chodzi automat. Alarm o krótszym okresie nie ma sensu przy
- *  danych, które zmieniają się w rytmie czytania artykułów. */
+/** How often the automatic run fires. A shorter alarm period makes no sense for
+ *  data that changes at the pace of reading articles. */
 export const SYNC_INTERVAL_MINUTES = 30;
 
 export const SYNC_ALARM = 'savely-sync';
 
 export interface SyncState {
-  /** `null` = synchronizacja wyłączona. */
+  /** `null` = sync is off. */
   providerId: string | null;
-  /** Automat co `SYNC_INTERVAL_MINUTES`. Ręczny przycisk działa niezależnie. */
+  /** The automatic run every `SYNC_INTERVAL_MINUTES`. The manual button is independent. */
   auto: boolean;
   lastSyncAt: number | null;
-  /** Komunikat z ostatniej nieudanej próby - pokazywany w opcjach. */
+  /** The message from the last failed attempt - shown on the options page. */
   lastError: string | null;
-  /** Znacznik wersji ostatnio wysłanej paczki (do diagnostyki). */
+  /** The revision marker of the last pushed bundle (for diagnostics). */
   revision: string | null;
   lastReport: SyncReport | null;
 }
@@ -61,7 +62,7 @@ function asNullableString(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null;
 }
 
-/** Stan ze `storage.local` to też dane z zewnątrz - waliduj (CLAUDE.md 3). */
+/** State from `storage.local` is external data too - validate it (CLAUDE.md 3). */
 export function parseSyncState(value: unknown): SyncState {
   if (!isRecord(value)) return { ...DEFAULT_SYNC_STATE };
 
@@ -72,8 +73,8 @@ export function parseSyncState(value: unknown): SyncState {
     lastSyncAt: asNullableNumber(value['lastSyncAt']),
     lastError: asNullableString(value['lastError']),
     revision: asNullableString(value['revision']),
-    // Raport służy wyłącznie do pokazania „co się stało ostatnio" - nie ma sensu
-    // walidować go pole po polu, ale nie może wysadzić widoku.
+    // The report exists only to show "what happened last time" - validating it
+    // field by field is pointless, but it must not blow up the view.
     lastReport: isRecord(report) ? (report as unknown as SyncReport) : null,
   };
 }
@@ -94,9 +95,10 @@ export async function saveSyncState(patch: Partial<SyncState>): Promise<SyncStat
 }
 
 /**
- * Włącza albo gasi alarm automatu. Wołane z opcji przy przełączniku i z tła
- * przy starcie - alarmy nie przeżywają aktualizacji rozszerzenia, a
- * `alarms.create` z tym samym ID po prostu nadpisuje poprzedni.
+ * Turns the automatic alarm on or off. Called from the options page on the
+ * toggle and from the background at startup - alarms do not survive an
+ * extension update, and `alarms.create` with the same ID simply overwrites the
+ * previous one.
  */
 export async function applyAutoSync(auto: boolean): Promise<void> {
   if (auto) {
@@ -110,13 +112,13 @@ export async function applyAutoSync(auto: boolean): Promise<void> {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message !== '' ? error.message : 'nieznany błąd';
+  return error instanceof Error && error.message !== '' ? error.message : 'unknown error';
 }
 
 /**
- * Jedno pełne przejście. Rzuca dalej, ale zawsze zostawia ślad w stanie -
- * automat z alarmu nie ma komu pokazać wyjątku, więc opcje muszą móc powiedzieć,
- * co ostatnio poszło nie tak.
+ * One full pass. It rethrows, but always leaves a trace in the state - the
+ * alarm-driven run has nobody to show an exception to, so the options page has
+ * to be able to say what went wrong last time.
  */
 export async function syncNow(provider: SyncProvider): Promise<SyncReport> {
   const now = Date.now();

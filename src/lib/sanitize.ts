@@ -1,37 +1,37 @@
 /**
- * Sanityzacja tresci artykulu. To jest granica bezpieczenstwa: wszystko, co
- * wchodzi tutaj, pochodzi z cudzej strony i moze byc wrogie.
+ * Sanitizing article content. This is the security boundary: everything that
+ * enters here comes from someone else's page and may be hostile.
  *
- * Zasada: lista dozwolonych, nie lista zakazanych. Co nie jest wymienione -
- * wypada. `FORBID_*` nizej niczego nie dodaje merytorycznie, jest jawnym
- * zapisem intencji dla czytajacego (i dla audytu sklepu).
+ * The rule: an allowlist, not a blocklist. Whatever is not listed is dropped.
+ * The `FORBID_*` lists below add nothing substantive; they state the intent
+ * explicitly for the reader (and for a store review).
  */
 import DOMPurify from 'dompurify';
 
-/** Tekst, listy, obrazki, figure, cytaty, kod i tabele - nic wiecej. */
+/** Text, lists, images, figures, quotes, code and tables - nothing more. */
 const ALLOWED_TAGS = [
-  // tekst
+  // text
   'p', 'br', 'hr', 'span', 'div', 'section', 'article',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'strong', 'b', 'em', 'i', 'u', 's', 'del', 'ins', 'sub', 'sup',
   'small', 'mark', 'abbr', 'cite', 'q', 'time', 'a',
-  // listy
+  // lists
   'ul', 'ol', 'li', 'dl', 'dt', 'dd',
-  // cytaty, kod
+  // quotes, code
   'blockquote', 'pre', 'code', 'kbd', 'samp', 'var',
   // media
   'figure', 'figcaption', 'img',
-  // tabele
+  // tables
   'table', 'caption', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
 ];
 
-/** Bez `class`, `id` i `style` - czytnik ma wlasna typografie. */
+/** No `class`, `id` or `style` - the reader brings its own typography. */
 const ALLOWED_ATTR = [
   'href', 'src', 'alt', 'title', 'lang', 'dir', 'datetime', 'cite',
   'width', 'height', 'colspan', 'rowspan', 'scope', 'rel', 'target',
 ];
 
-/** Zapisane wprost, mimo ze i tak nie sa na liscie dozwolonych. */
+/** Spelled out explicitly, even though they are not on the allowlist anyway. */
 const FORBID_TAGS = ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'noscript'];
 const FORBID_ATTR = ['style', 'class', 'id', 'srcset', 'sizes', 'loading'];
 
@@ -42,12 +42,13 @@ export interface SanitizedContent {
 }
 
 /**
- * Zamienia adres wzgledny na bezwzgledny. `null` = adres nie do uratowania
- * albo o schemacie, ktorego nie chcemy w tresci.
+ * Turns a relative address into an absolute one. `null` = an address beyond
+ * saving, or one with a scheme we do not want in the content.
  *
- * `data:` przechodzi wylacznie jako obrazek (`src`) i tylko z typem `image/*`.
- * W `href` nie ma po nim czego sie spodziewac poza `data:text/html`, a to jest
- * proba wykonania cudzego HTML-a w naszym origin - dlatego tam wypada zawsze.
+ * `data:` passes only as an image (`src`) and only with an `image/*` type. In
+ * an `href` there is nothing to expect from it but `data:text/html`, which is
+ * an attempt to run someone else's HTML in our origin - so there it always
+ * goes.
  */
 function absolutize(value: string, base: string, allowImageData: boolean): string | null {
   try {
@@ -62,7 +63,7 @@ function absolutize(value: string, base: string, allowImageData: boolean): strin
   }
 }
 
-/** Jedno slowo = ciag niebialych znakow. Dla CJK to przyblizenie i tyle. */
+/** One word = a run of non-whitespace characters. For CJK that is an approximation, no more. */
 function countWords(text: string): number {
   const trimmed = text.trim();
   if (trimmed === '') return 0;
@@ -70,8 +71,8 @@ function countWords(text: string): number {
 }
 
 /**
- * Wariant dla czytnika: gotowy fragment DOM do wstawienia przez `append()`.
- * Nigdy nie skladamy tresci przez `innerHTML` po stronie UI (CLAUDE.md 3).
+ * The variant for the reader: a ready DOM fragment to insert with `append()`.
+ * We never assemble content through `innerHTML` on the UI side (CLAUDE.md 3).
  */
 export function sanitizeToFragment(html: string, baseUrl: string): DocumentFragment {
   const container = sanitizeToContainer(html, baseUrl);
@@ -85,7 +86,7 @@ export function sanitizeArticleHtml(html: string, baseUrl: string): SanitizedCon
   const text = (container.textContent ?? '').replace(/\s+/g, ' ').trim();
 
   return {
-    // Odczyt innerHTML (nie zapis) - tresc jest juz po DOMPurify.
+    // Reading innerHTML (not writing) - the content already went through DOMPurify.
     html: container.innerHTML,
     text,
     wordCount: countWords(text),
@@ -93,14 +94,14 @@ export function sanitizeArticleHtml(html: string, baseUrl: string): SanitizedCon
 }
 
 /**
- * Wspolny rdzen: czysci HTML i oddaje go jako element-kontener.
+ * The shared core: cleans the HTML and returns it as a container element.
  *
- * Przy okazji rozwiazuje `src`/`href` wzgledem `baseUrl` - inaczej zapisany
- * offline artykul mialby linki i obrazki wskazujace na `moz-extension://`
- * albo `chrome-extension://`.
+ * Along the way it resolves `src`/`href` against `baseUrl` - otherwise an
+ * article saved for offline reading would have links and images pointing at
+ * `moz-extension://` or `chrome-extension://`.
  *
- * Hook jest zdejmowany w `finally`, bo DOMPurify trzyma go globalnie i przy
- * kolejnym wywolaniu rozwiazywalby adresy wzgledem poprzedniej strony.
+ * The hook is removed in `finally`, because DOMPurify keeps it globally and on
+ * the next call would resolve addresses against the previous page.
  */
 function sanitizeToContainer(html: string, baseUrl: string): HTMLDivElement {
   DOMPurify.addHook('afterSanitizeAttributes', (node) => {
@@ -112,7 +113,7 @@ function sanitizeToContainer(html: string, baseUrl: string): HTMLDivElement {
       if (absolute === null) node.removeAttribute('href');
       else {
         node.setAttribute('href', absolute);
-        // Tresc jest cudza - link ma sie otwierac bez dostepu do naszej strony.
+        // The content is someone else's - a link must open without access to our page.
         node.setAttribute('target', '_blank');
         node.setAttribute('rel', 'noopener noreferrer');
       }
@@ -134,7 +135,7 @@ function sanitizeToContainer(html: string, baseUrl: string): HTMLDivElement {
       FORBID_ATTR,
       ALLOW_DATA_ATTR: false,
       ALLOW_ARIA_ATTR: false,
-      // Atrybuty `on*` nie sa na liscie dozwolonych, wiec nie przechodza.
+      // `on*` attributes are not on the allowlist, so they never pass.
       RETURN_DOM_FRAGMENT: true,
     });
 

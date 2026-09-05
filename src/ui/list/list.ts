@@ -1,13 +1,13 @@
 /**
- * Lista zapisanych pozycji - ten sam plik obsługuje popup i pełną stronę
- * (`list.html?full=1`). Różnice trzymamy w jednym miejscu (`MODE` niżej):
- * popup ma sufit 600 px, pokazuje 20 ostatnich pozycji i kończy się
- * przyciskiem "Zobacz wszystkie".
+ * The list of saved items - the same file drives the popup and the full page
+ * (`list.html?full=1`). The differences live in one place (`MODE` below):
+ * the popup is capped at 600 px, shows the 20 most recent items and ends with
+ * a "See all" button.
  *
- * Wszystkie pozycje (bez treści) wchodzą do pamięci raz i tam są filtrowane -
- * metadane 5000 artykułów to kilka megabajtów, a każde przełączenie zakładki
- * czy tagu jest wtedy natychmiastowe. Treść czytamy tylko na żądanie:
- * do indeksu wyszukiwania i do miniatur.
+ * Every item (without content) is loaded into memory once and filtered there -
+ * metadata for 5000 articles is a few megabytes, which makes switching a tab
+ * or a tag instant. Content is read on demand only: for the search index and
+ * for thumbnails.
  */
 import browser from 'webextension-polyfill';
 
@@ -35,7 +35,7 @@ const OVERSCAN = 4;
 const POPUP_LIMIT = 20;
 const SEARCH_DEBOUNCE_MS = 150;
 const UNDO_MS = 5_000;
-/** Porcja tresci przy budowie indeksu - na tyle mala, zeby UI oddychal. */
+/** Content batch size while building the index - small enough to keep the UI responsive. */
 const INDEX_BATCH = 150;
 
 const MODE: 'popup' | 'full' =
@@ -57,9 +57,9 @@ const state = {
 };
 
 /**
- * Wysokość wiersza jest kontraktem między CSS a wirtualizacją, a przy 360 px
- * karta rośnie (akcje schodzą pod tagi). Dlatego wartość mieszka w CSS
- * (`--row-h`), a tutaj ją tylko odczytujemy - i ponownie po zmianie rozmiaru.
+ * Row height is a contract between the CSS and the virtualization, and at
+ * 360 px a card grows (actions move below the tags). That is why the value
+ * lives in CSS (`--row-h`) and is only read here - and re-read on resize.
  */
 function readRowHeight(): number {
   const raw = getComputedStyle(document.documentElement).getPropertyValue('--row-h');
@@ -93,7 +93,7 @@ const el = {
 };
 
 // ---------------------------------------------------------------------------
-// Dane
+// Data
 // ---------------------------------------------------------------------------
 
 async function loadItems(): Promise<void> {
@@ -110,10 +110,10 @@ async function loadItems(): Promise<void> {
 }
 
 /**
- * Indeks buduje się dwuetapowo: najpierw tytuły i zajawki (są w pamięci,
- * więc szukanie działa od razu), potem - tylko na pełnej stronie - treści
- * czytane z bazy porcjami. Popup nie ma po co wciągać megabajtów treści,
- * żeby pokazać 20 pozycji.
+ * The index is built in two stages: titles and excerpts first (they are in
+ * memory, so search works immediately), then - on the full page only - the
+ * content read from the database in batches. There is no reason for the popup
+ * to pull in megabytes of content just to show 20 items.
  */
 function indexMetadata(): void {
   index.clear();
@@ -133,7 +133,7 @@ async function indexContents(): Promise<void> {
         thumbnails.set(content.itemId, findLeadImage(content.html));
       }
     }
-    // Oddajemy wątek przeglądarce, żeby lista pozostała responsywna.
+    // Yield to the browser so the list stays responsive.
     await new Promise((resolve) => {
       setTimeout(resolve, 0);
     });
@@ -143,7 +143,7 @@ async function indexContents(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Filtrowanie i render
+// Filtering and rendering
 // ---------------------------------------------------------------------------
 
 function matchesTab(item: SavedItem): boolean {
@@ -172,8 +172,8 @@ function recompute(): void {
 
   let visible = base;
   if (state.query.trim() !== '') {
-    // Wyszukiwanie zawężamy do bieżącej zakładki - inaczej wynik z archiwum
-    // pojawiałby się w skrzynce i odwrotnie.
+    // Search is scoped to the current tab - otherwise an archived result would
+    // show up in the inbox and vice versa.
     const ranking = new Map(index.search(state.query, 500).map((id, position) => [id, position]));
     visible = base
       .filter((item) => ranking.has(item.id))
@@ -208,8 +208,8 @@ function renderCounts(filteredTotal: number): void {
     el.footer.hidden = hidden;
     el.seeAll.textContent =
       filteredTotal > POPUP_LIMIT
-        ? `Zobacz wszystkie (${String(filteredTotal)})`
-        : 'Zobacz wszystkie';
+        ? `See all (${String(filteredTotal)})`
+        : 'See all';
   }
 }
 
@@ -224,7 +224,7 @@ function renderActiveTags(): void {
     chip.type = 'button';
     chip.className = 'chip chip--removable';
     chip.textContent = `#${tag} ✕`;
-    chip.title = `Przestań filtrować po #${tag}`;
+    chip.title = `Stop filtering by #${tag}`;
     chip.addEventListener('click', () => {
       state.tags = state.tags.filter((value) => value !== tag);
       recompute();
@@ -270,20 +270,20 @@ function render(force = false): void {
 }
 
 function emptyMessage(): string {
-  if (state.query.trim() !== '') return `Brak wyników dla „${state.query.trim()}”.`;
-  if (state.tags.length > 0) return 'Żadna pozycja nie ma wszystkich wybranych tagów.';
+  if (state.query.trim() !== '') return `No results for \u201c${state.query.trim()}\u201d.`;
+  if (state.tags.length > 0) return 'No item has all of the selected tags.';
   switch (state.tab) {
     case 'inbox':
-      return 'Nic tu jeszcze nie ma. Zapisz pierwszą stronę.';
+      return 'Nothing here yet. Save your first page.';
     case 'favorite':
-      return 'Brak ulubionych.';
+      return 'No favorites.';
     case 'archive':
-      return 'Archiwum jest puste.';
+      return 'The archive is empty.';
   }
 }
 
 // ---------------------------------------------------------------------------
-// Miniatury
+// Thumbnails
 // ---------------------------------------------------------------------------
 
 function applyThumbnail(card: HTMLLIElement, itemId: string): void {
@@ -298,10 +298,10 @@ function applyThumbnail(card: HTMLLIElement, itemId: string): void {
 let thumbnailTimer: number | undefined;
 
 /**
- * Miniatury wyciągamy z zapisanej treści dopiero dla kart, które ktoś widzi -
- * i tylko raz na pozycję. Schemat bazy nie trzyma osobnego pola na obrazek,
- * więc alternatywą byłaby migracja; przy kilkunastu widocznych kartach jeden
- * odczyt z IndexedDB na kartę jest tańszy.
+ * Thumbnails are pulled out of the stored content only for cards someone can
+ * actually see - and only once per item. The database schema has no separate
+ * field for the image, so the alternative would be a migration; with a dozen
+ * or so visible cards, one IndexedDB read per card is cheaper.
  */
 function scheduleThumbnails(): void {
   if (thumbnailTimer !== undefined) clearTimeout(thumbnailTimer);
@@ -326,7 +326,7 @@ async function loadVisibleThumbnails(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Akcje na pozycjach
+// Item actions
 // ---------------------------------------------------------------------------
 
 function replaceItem(updated: SavedItem): void {
@@ -339,14 +339,14 @@ function extensionUrl(path: string): string {
   return browser.runtime.getURL(path);
 }
 
-/** Zawsze nowa karta: czytnik i oryginał mają nie zjadać listy, z której wyszły. */
+/** Always a new tab: the reader and the original must not swallow the list they came from. */
 function openUrl(url: string): void {
   void browser.tabs.create({ url });
   if (MODE === 'popup') window.close();
 }
 
 const callbacks: CardCallbacks = {
-  // Bez oznaczania jako przeczytane - o tym decyduje czytnik po dojściu do 90% treści.
+  // No read marking here - the reader decides that after reaching 90% of the content.
   openReader(item) {
     openUrl(`${extensionUrl('ui/reader/index.html')}?id=${encodeURIComponent(item.id)}`);
   },
@@ -387,9 +387,9 @@ const callbacks: CardCallbacks = {
 };
 
 /**
- * Usunięcie jest natychmiastowe na ekranie, ale w bazie dopiero po 5 s.
- * Do tego czasu pozycja żyje w `state.pending` i da się ją cofnąć bez
- * dotykania IndexedDB.
+ * Deletion is immediate on screen but only lands in the database after 5 s.
+ * Until then the item lives in `state.pending` and can be undone without
+ * touching IndexedDB.
  */
 function removeWithUndo(item: SavedItem): void {
   if (el.toast === null) return;
@@ -404,10 +404,10 @@ function removeWithUndo(item: SavedItem): void {
   state.pending.set(item.id, { item, timer });
 
   showToast(el.toast, {
-    message: `Usunięto „${item.title === '' ? item.url : item.title}”`,
+    message: `Deleted \u201c${item.title === '' ? item.url : item.title}\u201d`,
     durationMs: UNDO_MS,
     action: {
-      label: 'Cofnij',
+      label: 'Undo',
       run: () => {
         const pending = state.pending.get(item.id);
         if (pending === undefined) return;
@@ -427,7 +427,7 @@ function removeWithUndo(item: SavedItem): void {
 }
 
 // ---------------------------------------------------------------------------
-// Zaznaczenie i klawiatura
+// Selection and keyboard
 // ---------------------------------------------------------------------------
 
 function select(position: number): void {
@@ -551,7 +551,7 @@ function switchTab(tab: TabId): void {
 }
 
 // ---------------------------------------------------------------------------
-// Zapis z popupu
+// Saving from the popup
 // ---------------------------------------------------------------------------
 
 function showStatus(message: string, tone: 'ok' | 'error'): void {
@@ -565,12 +565,12 @@ async function saveCurrentPage(): Promise<void> {
   if (el.save === null) return;
 
   el.save.disabled = true;
-  showStatus('Zapisuję…', 'ok');
+  showStatus('Saving\u2026', 'ok');
 
   try {
     const response: unknown = await browser.runtime.sendMessage({ type: SAVE_ACTIVE_TAB });
     if (!isSaveResultMessage(response)) {
-      showStatus('Tło nie odpowiedziało - spróbuj jeszcze raz.', 'error');
+      showStatus('The background did not respond - please try again.', 'error');
       return;
     }
     showStatus(response.message, response.ok && !response.degraded ? 'ok' : 'error');
@@ -580,14 +580,14 @@ async function saveCurrentPage(): Promise<void> {
       recompute();
     }
   } catch {
-    showStatus('Nie udało się porozumieć z tłem rozszerzenia.', 'error');
+    showStatus('Could not reach the extension background.', 'error');
   } finally {
     el.save.disabled = false;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Start
+// Startup
 // ---------------------------------------------------------------------------
 
 function wireEvents(): void {
@@ -644,8 +644,8 @@ function wireEvents(): void {
 
   el.helpButton?.addEventListener('click', toggleHelp);
 
-  // Na Firefoksie na Androidzie about:addons jest jedyna alternatywa - stad
-  // wejscie do opcji takze z listy (CLAUDE.md 5.6).
+  // On Firefox for Android about:addons is the only alternative - hence the
+  // entry point to the options page from the list as well (CLAUDE.md 5.6).
   el.optionsButton?.addEventListener('click', () => {
     void browser.runtime.openOptionsPage();
   });
@@ -656,9 +656,9 @@ function wireEvents(): void {
 
   document.addEventListener('keydown', onKeyDown);
 
-  // Zamknięcie okna nie może zawiesić usunięcia w połowie: domykamy toast,
-  // co odpala właściwe `deleteItem`. Popup potrafi zniknąć szybciej, niż
-  // transakcja dobiegnie końca - wtedy pozycja po prostu zostaje w bazie.
+  // Closing the window must not leave a deletion half-done: we flush the toast,
+  // which fires the real `deleteItem`. The popup can disappear faster than the
+  // transaction finishes - in that case the item simply stays in the database.
   window.addEventListener('pagehide', () => {
     if (el.toast !== null) flushToast(el.toast);
   });

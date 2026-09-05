@@ -1,10 +1,10 @@
 /**
- * Testy scalania. Czysta funkcja, więc każdy przypadek to jeden stan lokalny
- * plus jeden zdalny - bez bazy, bez sieci, bez zegara.
+ * Merge tests. A pure function, so every case is one local state plus one
+ * remote state - no database, no network, no clock.
  *
- * Interesuje nas nie tyle „czy się scala", co **czy nic nie ginie**: tagi
- * i podświetlenia dopisane niezależnie na dwóch urządzeniach, świadome
- * kasowanie i świadoma edycja po kasowaniu.
+ * What interests us is not so much "does it merge" as **does nothing get
+ * lost**: tags and highlights added independently on two devices, a deliberate
+ * deletion, and a deliberate edit after a deletion.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -19,7 +19,7 @@ function localItem(overrides: Partial<SavedItem> & Pick<SavedItem, 'url'>): Save
   return {
     id: `local-${overrides.url}`,
     resolvedUrl: overrides.url,
-    title: 'Tytuł',
+    title: 'A title',
     excerpt: '',
     byline: null,
     siteName: null,
@@ -43,7 +43,7 @@ function localItem(overrides: Partial<SavedItem> & Pick<SavedItem, 'url'>): Save
 function remoteItem(overrides: Partial<SyncItem> & Pick<SyncItem, 'url'>): SyncItem {
   return {
     resolvedUrl: overrides.url,
-    title: 'Tytuł',
+    title: 'A title',
     excerpt: '',
     byline: null,
     siteName: null,
@@ -87,8 +87,8 @@ function merge(localState: SyncLocalState, remoteState: SyncPayload | null) {
 
 const URL_A = 'https://a.example/1';
 
-describe('pierwsze uruchomienie', () => {
-  it('bez danych zdalnych wysyła wszystko i nie zmienia niczego lokalnie', () => {
+describe('the first run', () => {
+  it('with no remote data it pushes everything and changes nothing locally', () => {
     const result = merge(local({ items: [localItem({ url: URL_A, tags: ['rust'] })] }), null);
 
     expect(result.payload.items).toHaveLength(1);
@@ -98,44 +98,44 @@ describe('pierwsze uruchomienie', () => {
     expect(result.conflicts).toBe(0);
   });
 
-  it('pusta baza przyjmuje wszystko z drugiej strony', () => {
+  it('an empty database takes everything from the other side', () => {
     const result = merge(
       local(),
       remote({
-        items: [remoteItem({ url: URL_A, title: 'Ze zdalnego' })],
+        items: [remoteItem({ url: URL_A, title: 'From the remote' })],
         contents: { [URL_A]: { html: '<p>a</p>', text: 'a', updatedAt: 900 } },
       }),
     );
 
     expect(result.plan.writes).toHaveLength(1);
-    expect(result.plan.writes[0]?.item.title).toBe('Ze zdalnego');
+    expect(result.plan.writes[0]?.item.title).toBe('From the remote');
     expect(result.plan.writes[0]?.content?.html).toBe('<p>a</p>');
   });
 });
 
-describe('last-write-wins po updatedAt', () => {
-  it('nowsza strona zdalna nadpisuje pola lokalne', () => {
+describe('last-write-wins by updatedAt', () => {
+  it('a newer remote side overwrites the local fields', () => {
     const result = merge(
-      local({ items: [localItem({ url: URL_A, title: 'Stary', updatedAt: 1_000 })] }),
-      remote({ items: [remoteItem({ url: URL_A, title: 'Nowy', updatedAt: 2_000, favorite: true })] }),
+      local({ items: [localItem({ url: URL_A, title: 'Old', updatedAt: 1_000 })] }),
+      remote({ items: [remoteItem({ url: URL_A, title: 'New', updatedAt: 2_000, favorite: true })] }),
     );
 
-    expect(result.plan.writes[0]?.item.title).toBe('Nowy');
+    expect(result.plan.writes[0]?.item.title).toBe('New');
     expect(result.plan.writes[0]?.item.favorite).toBe(true);
     expect(result.conflicts).toBe(1);
   });
 
-  it('nowsza strona lokalna zostaje i idzie dalej', () => {
+  it('a newer local side stays and travels on', () => {
     const result = merge(
-      local({ items: [localItem({ url: URL_A, title: 'Lokalny', updatedAt: 3_000 })] }),
-      remote({ items: [remoteItem({ url: URL_A, title: 'Zdalny', updatedAt: 2_000 })] }),
+      local({ items: [localItem({ url: URL_A, title: 'Local', updatedAt: 3_000 })] }),
+      remote({ items: [remoteItem({ url: URL_A, title: 'Remote', updatedAt: 2_000 })] }),
     );
 
     expect(result.plan.writes).toEqual([]);
-    expect(result.payload.items[0]?.title).toBe('Lokalny');
+    expect(result.payload.items[0]?.title).toBe('Local');
   });
 
-  it('identyczne rekordy to nie konflikt i nie zapis', () => {
+  it('identical records are neither a conflict nor a write', () => {
     const result = merge(
       local({ items: [localItem({ url: URL_A })] }),
       remote({ items: [remoteItem({ url: URL_A })] }),
@@ -146,26 +146,26 @@ describe('last-write-wins po updatedAt', () => {
   });
 });
 
-describe('suma tagów i podświetleń', () => {
-  it('tagi z obu stron się dodają, nawet gdy pozycję wygrała jedna', () => {
+describe('the union of tags and highlights', () => {
+  it('tags from both sides add up, even when one side won the item', () => {
     const result = merge(
-      local({ items: [localItem({ url: URL_A, tags: ['lokalny'], updatedAt: 1_000 })] }),
-      remote({ items: [remoteItem({ url: URL_A, tags: ['zdalny'], updatedAt: 5_000 })] }),
+      local({ items: [localItem({ url: URL_A, tags: ['local'], updatedAt: 1_000 })] }),
+      remote({ items: [remoteItem({ url: URL_A, tags: ['remote'], updatedAt: 5_000 })] }),
     );
 
-    expect(result.payload.items[0]?.tags).toEqual(['lokalny', 'zdalny']);
-    expect(result.plan.writes[0]?.item.tags).toEqual(['lokalny', 'zdalny']);
+    expect(result.payload.items[0]?.tags).toEqual(['local', 'remote']);
+    expect(result.plan.writes[0]?.item.tags).toEqual(['local', 'remote']);
   });
 
-  it('podświetlenia z obu stron się dodają', () => {
+  it('highlights from both sides add up', () => {
     const highlight: Highlight = {
       id: 'h1',
       itemId: `local-${URL_A}`,
-      text: 'lokalny cytat',
+      text: 'local quote',
       note: null,
       createdAt: 1_000,
       start: 0,
-      end: 13,
+      end: 11,
       prefix: '',
       suffix: '',
     };
@@ -178,8 +178,8 @@ describe('suma tagów i podświetleń', () => {
             url: URL_A,
             highlights: [
               {
-                text: 'zdalny cytat',
-                note: 'notatka',
+                text: 'remote quote',
+                note: 'a note',
                 createdAt: 2_000,
                 start: 20,
                 end: 32,
@@ -193,19 +193,19 @@ describe('suma tagów i podświetleń', () => {
     );
 
     const merged = result.payload.items[0]?.highlights ?? [];
-    expect(merged.map((entry) => entry.text).sort()).toEqual(['lokalny cytat', 'zdalny cytat']);
+    expect(merged.map((entry) => entry.text).sort()).toEqual(['local quote', 'remote quote']);
     expect(result.plan.writes[0]?.highlights).toHaveLength(2);
   });
 
-  it('ten sam cytat z notatką po jednej stronie zachowuje notatkę', () => {
+  it('the same quote with a note on one side keeps the note', () => {
     const highlight: Highlight = {
       id: 'h1',
       itemId: `local-${URL_A}`,
-      text: 'cytat',
+      text: 'a quote',
       note: null,
       createdAt: 1_000,
       start: 0,
-      end: 5,
+      end: 7,
       prefix: '',
       suffix: '',
     };
@@ -217,7 +217,7 @@ describe('suma tagów i podświetleń', () => {
           remoteItem({
             url: URL_A,
             highlights: [
-              { text: 'cytat', note: 'ważne', createdAt: 1_000, start: 0, end: 5, prefix: '', suffix: '' },
+              { text: 'a quote', note: 'important', createdAt: 1_000, start: 0, end: 7, prefix: '', suffix: '' },
             ],
           }),
         ],
@@ -225,17 +225,17 @@ describe('suma tagów i podświetleń', () => {
     );
 
     expect(result.payload.items[0]?.highlights).toEqual([
-      { text: 'cytat', note: 'ważne', createdAt: 1_000, start: 0, end: 5, prefix: '', suffix: '' },
+      { text: 'a quote', note: 'important', createdAt: 1_000, start: 0, end: 7, prefix: '', suffix: '' },
     ]);
   });
 });
 
-describe('treść', () => {
-  it('idzie za własnym updatedAt, niezależnie od pozycji', () => {
+describe('content', () => {
+  it('follows its own updatedAt, independently of the item', () => {
     const content: ItemContent = {
       itemId: `local-${URL_A}`,
-      html: '<p>lokalna</p>',
-      text: 'lokalna',
+      html: '<p>local</p>',
+      text: 'local',
       updatedAt: 5_000,
     };
 
@@ -243,30 +243,30 @@ describe('treść', () => {
       local({ items: [localItem({ url: URL_A, updatedAt: 1_000 })], contents: [content] }),
       remote({
         items: [remoteItem({ url: URL_A, updatedAt: 9_000 })],
-        contents: { [URL_A]: { html: '<p>zdalna</p>', text: 'zdalna', updatedAt: 2_000 } },
+        contents: { [URL_A]: { html: '<p>remote</p>', text: 'remote', updatedAt: 2_000 } },
       }),
     );
 
-    // Pozycję wygrała strona zdalna, ale treść lokalna jest świeższa.
-    expect(result.payload.contents[URL_A]?.html).toBe('<p>lokalna</p>');
+    // The remote side won the item, but the local content is fresher.
+    expect(result.payload.contents[URL_A]?.html).toBe('<p>local</p>');
     expect(result.plan.writes[0]?.content).toBeNull();
   });
 
-  it('brak treści lokalnie oznacza pobranie zdalnej', () => {
+  it('no local content means pulling the remote one', () => {
     const result = merge(
       local({ items: [localItem({ url: URL_A })] }),
       remote({
         items: [remoteItem({ url: URL_A })],
-        contents: { [URL_A]: { html: '<p>zdalna</p>', text: 'zdalna', updatedAt: 2_000 } },
+        contents: { [URL_A]: { html: '<p>remote</p>', text: 'remote', updatedAt: 2_000 } },
       }),
     );
 
-    expect(result.plan.writes[0]?.content?.html).toBe('<p>zdalna</p>');
+    expect(result.plan.writes[0]?.content?.html).toBe('<p>remote</p>');
   });
 });
 
-describe('kasowanie', () => {
-  it('grób zdalny nowszy niż zmiana kasuje pozycję lokalnie', () => {
+describe('deletion', () => {
+  it('a remote tombstone newer than the change deletes the item locally', () => {
     const result = merge(
       local({ items: [localItem({ url: URL_A, updatedAt: 1_000 })] }),
       remote({ tombstones: [{ url: URL_A, deletedAt: 2_000 }] }),
@@ -277,7 +277,7 @@ describe('kasowanie', () => {
     expect(result.payload.tombstones).toEqual([{ url: URL_A, deletedAt: 2_000 }]);
   });
 
-  it('grób lokalny nie pozwala pozycji wrócić z drugiej strony', () => {
+  it('a local tombstone stops the item coming back from the other side', () => {
     const result = merge(
       local({ tombstones: [{ url: URL_A, deletedAt: 5_000 }] }),
       remote({ items: [remoteItem({ url: URL_A, updatedAt: 1_000 })] }),
@@ -287,17 +287,17 @@ describe('kasowanie', () => {
     expect(result.payload.items).toEqual([]);
   });
 
-  it('zmiana młodsza niż grób wskrzesza pozycję', () => {
+  it('a change younger than the tombstone resurrects the item', () => {
     const result = merge(
       local({ tombstones: [{ url: URL_A, deletedAt: 2_000 }] }),
-      remote({ items: [remoteItem({ url: URL_A, updatedAt: 9_000, title: 'Wróciła' })] }),
+      remote({ items: [remoteItem({ url: URL_A, updatedAt: 9_000, title: 'It came back' })] }),
     );
 
-    expect(result.plan.writes[0]?.item.title).toBe('Wróciła');
+    expect(result.plan.writes[0]?.item.title).toBe('It came back');
     expect(result.payload.items).toHaveLength(1);
   });
 
-  it('groby z obu stron scalają się po późniejszej dacie', () => {
+  it('tombstones from both sides merge on the later date', () => {
     const result = merge(
       local({ tombstones: [{ url: URL_A, deletedAt: 1_000 }] }),
       remote({ tombstones: [{ url: URL_A, deletedAt: 7_000 }] }),
@@ -308,14 +308,14 @@ describe('kasowanie', () => {
   });
 });
 
-describe('tożsamość po adresie', () => {
-  it('ten sam artykuł z parametrami śledzącymi to jedna pozycja', () => {
+describe('identity by address', () => {
+  it('the same article with tracking parameters is one item', () => {
     const result = merge(
-      local({ items: [localItem({ url: 'https://a.example/1', tags: ['lokalny'] })] }),
-      remote({ items: [remoteItem({ url: 'https://a.example/1', tags: ['zdalny'] })] }),
+      local({ items: [localItem({ url: 'https://a.example/1', tags: ['local'] })] }),
+      remote({ items: [remoteItem({ url: 'https://a.example/1', tags: ['remote'] })] }),
     );
 
     expect(result.payload.items).toHaveLength(1);
-    expect(result.payload.items[0]?.tags).toEqual(['lokalny', 'zdalny']);
+    expect(result.payload.items[0]?.tags).toEqual(['local', 'remote']);
   });
 });

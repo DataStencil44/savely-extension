@@ -1,10 +1,10 @@
 /**
- * Testy ładunku: obiekt -> dwa pliki -> obiekt.
+ * Payload tests: object -> two files -> object.
  *
- * Plik po drugiej stronie da się otworzyć w przeglądarce i ręcznie zepsuć,
- * a starsza wersja rozszerzenia zapisze go inaczej niż nowsza. Dlatego liczy
- * się nie tylko przejście w obie strony, ale i to, co się dzieje, gdy plik
- * przychodzi uszkodzony.
+ * The file on the other side can be opened in a browser and broken by hand, and
+ * an older version of the extension will write it differently from a newer one.
+ * So what matters is not only the round trip, but what happens when the file
+ * arrives damaged.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -30,11 +30,11 @@ function payload(overrides: Partial<SyncPayload> = {}): SyncPayload {
       {
         url: URL_A,
         resolvedUrl: `${URL_A}?utm_source=nl`,
-        title: 'Tytuł',
-        excerpt: 'zajawka',
+        title: 'A title',
+        excerpt: 'an excerpt',
         byline: 'Anna Kowalska',
         siteName: null,
-        lang: 'pl',
+        lang: 'en',
         wordCount: 400,
         estReadingMinutes: 2,
         savedAt: 1_000,
@@ -47,37 +47,37 @@ function payload(overrides: Partial<SyncPayload> = {}): SyncPayload {
         status: 'ready',
         readingProgress: 0.5,
         highlights: [
-          { text: 'cytat', note: 'notatka', createdAt: 1_500, start: 0, end: 5, prefix: '', suffix: '' },
+          { text: 'a quote', note: 'a note', createdAt: 1_500, start: 0, end: 7, prefix: '', suffix: '' },
         ],
       },
     ],
     tombstones: [{ url: 'https://b.example/2', deletedAt: 3_000 }],
-    contents: { [URL_A]: { html: '<p>treść</p>', text: 'treść', updatedAt: 1_800 } },
+    contents: { [URL_A]: { html: '<p>content</p>', text: 'content', updatedAt: 1_800 } },
     ...overrides,
   };
 }
 
 describe('gzip + base64', () => {
-  it('przechodzi w obie strony, także dla polskich znaków', async () => {
+  it('round-trips, including non-ASCII characters', async () => {
     const text = 'zażółć gęślą jaźń '.repeat(50);
     expect(await gunzipFromBase64(await gzipToBase64(text))).toBe(text);
   });
 
-  it('faktycznie kompresuje powtarzalny tekst', async () => {
-    const text = '<p>ten sam akapit</p>'.repeat(500);
+  it('really does compress repetitive text', async () => {
+    const text = '<p>the same paragraph</p>'.repeat(500);
     const packed = await gzipToBase64(text);
     expect(packed.length).toBeLessThan(text.length / 5);
   });
 
-  it('znosi base64 połamane białymi znakami', async () => {
-    const packed = await gzipToBase64('krótka treść');
+  it('tolerates base64 wrapped with whitespace', async () => {
+    const packed = await gzipToBase64('a short piece of content');
     const wrapped = (packed.match(/.{1,40}/g) ?? []).join('\n');
-    expect(await gunzipFromBase64(wrapped)).toBe('krótka treść');
+    expect(await gunzipFromBase64(wrapped)).toBe('a short piece of content');
   });
 });
 
-describe('buildFiles i parseFiles', () => {
-  it('przechodzą w obie strony bez strat', async () => {
+describe('buildFiles and parseFiles', () => {
+  it('round-trip without losses', async () => {
     const files = await buildFiles(payload());
     expect(Object.keys(files).sort()).toEqual([CONTENTS_FILE, METADATA_FILE].sort());
 
@@ -88,32 +88,32 @@ describe('buildFiles i parseFiles', () => {
     expect(parsed.schemaVersion).toBe(4);
   });
 
-  it('metadane zostają czytelne dla człowieka, treści są spakowane', async () => {
+  it('the metadata stays human-readable, the content is compressed', async () => {
     const files = await buildFiles(payload());
 
-    expect(files[METADATA_FILE]).toContain('"title": "Tytuł"');
-    // Treść nie może być czytelna wprost - to base64 gzipu.
+    expect(files[METADATA_FILE]).toContain('"title": "A title"');
+    // The content must not be readable directly - it is gzip in base64.
     expect(files[CONTENTS_FILE]).not.toContain('<p>');
     expect(files[CONTENTS_FILE]).toMatch(/^[A-Za-z0-9+/=]+$/);
   });
 });
 
-describe('pliki nie do przyjęcia', () => {
-  it('brak pliku metadanych', async () => {
-    await expect(parseFiles({ 'cokolwiek.txt': '{}' })).rejects.toThrow(SyncPayloadError);
+describe('unacceptable files', () => {
+  it('a missing metadata file', async () => {
+    await expect(parseFiles({ 'anything.txt': '{}' })).rejects.toThrow(SyncPayloadError);
   });
 
-  it('metadane, które nie są JSON-em', async () => {
-    await expect(parseFiles({ [METADATA_FILE]: 'nie json' })).rejects.toThrow(/JSON/);
+  it('metadata that is not JSON', async () => {
+    await expect(parseFiles({ [METADATA_FILE]: 'not json' })).rejects.toThrow(/JSON/);
   });
 
-  it('obcy plik z poprawnym JSON-em', async () => {
+  it('a foreign file with valid JSON', async () => {
     await expect(parseFiles({ [METADATA_FILE]: '{"items":[]}' })).rejects.toThrow(
-      /dane synchronizacji/,
+      /Savely sync data/,
     );
   });
 
-  it('nowsza wersja formatu', async () => {
+  it('a newer format version', async () => {
     const files = {
       [METADATA_FILE]: JSON.stringify({
         format: SYNC_FORMAT,
@@ -121,35 +121,35 @@ describe('pliki nie do przyjęcia', () => {
         items: [],
       }),
     };
-    await expect(parseFiles(files)).rejects.toThrow(/nowszym formacie/);
+    await expect(parseFiles(files)).rejects.toThrow(/newer format/);
   });
 });
 
-describe('uszkodzone fragmenty', () => {
-  it('zepsute treści nie przekreślają metadanych', async () => {
+describe('damaged fragments', () => {
+  it('broken content does not invalidate the metadata', async () => {
     const files = await buildFiles(payload());
-    files[CONTENTS_FILE] = 'to na pewno nie jest gzip';
+    files[CONTENTS_FILE] = 'this is certainly not gzip';
 
     const parsed = await parseFiles(files);
     expect(parsed.items).toHaveLength(1);
     expect(parsed.contents).toEqual({});
   });
 
-  it('pozycja bez adresu wypada, reszta zostaje', async () => {
+  it('an item without an address drops out, the rest stays', async () => {
     const files = {
       [METADATA_FILE]: JSON.stringify({
         format: SYNC_FORMAT,
         formatVersion: 1,
-        items: [{ title: 'Bez adresu' }, { url: URL_A, title: 'Dobra' }, 'nie obiekt'],
+        items: [{ title: 'No address' }, { url: URL_A, title: 'A good one' }, 'not an object'],
       }),
     };
 
     const parsed = await parseFiles(files);
     expect(parsed.items).toHaveLength(1);
-    expect(parsed.items[0]?.title).toBe('Dobra');
+    expect(parsed.items[0]?.title).toBe('A good one');
   });
 
-  it('brak updatedAt cofa się do daty zapisu, nie do teraz', async () => {
+  it('a missing updatedAt falls back to the save date, not to now', async () => {
     const files = {
       [METADATA_FILE]: JSON.stringify({
         format: SYNC_FORMAT,
@@ -161,20 +161,20 @@ describe('uszkodzone fragmenty', () => {
     expect((await parseFiles(files)).items[0]?.updatedAt).toBe(1_234);
   });
 
-  it('duplikat adresu w pliku nie tworzy dwóch pozycji', async () => {
+  it('a duplicate address in the file does not create two items', async () => {
     const files = {
       [METADATA_FILE]: JSON.stringify({
         format: SYNC_FORMAT,
         formatVersion: 1,
         items: [
-          { url: URL_A, title: 'Pierwsza' },
-          { url: `${URL_A}?utm_source=x`, title: 'Ta sama po normalizacji' },
+          { url: URL_A, title: 'The first' },
+          { url: `${URL_A}?utm_source=x`, title: 'The same after normalization' },
         ],
       }),
     };
 
     const parsed = await parseFiles(files);
     expect(parsed.items).toHaveLength(1);
-    expect(parsed.items[0]?.title).toBe('Pierwsza');
+    expect(parsed.items[0]?.title).toBe('The first');
   });
 });

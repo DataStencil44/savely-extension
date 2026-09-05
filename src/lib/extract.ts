@@ -1,9 +1,9 @@
 /**
- * Ekstrakcja artykulu z dokumentu.
+ * Extracting an article from a document.
  *
- * Ten modul dziala wszedzie, gdzie jest DOM: w content scripcie (sciezka A),
- * w dokumencie offscreen na Chromium i na stronie tla Firefoksa (sciezka B).
- * Nie dotyka API przegladarki - dostaje `Document`, oddaje wynik.
+ * This module runs anywhere there is a DOM: in the content script (path A), in
+ * the offscreen document on Chromium and on Firefox's background page (path B).
+ * It touches no browser API - it takes a `Document` and returns a result.
  */
 import { Readability } from '@mozilla/readability';
 
@@ -13,11 +13,12 @@ import { estimateReadingMinutes, type ExtractOutcome } from '@/types/article';
 const HTML_CONTENT_TYPES = ['text/html', 'application/xhtml+xml'];
 
 /**
- * Ponizej tylu znakow uznajemy, ze tresci nie ma.
+ * Below this many characters we treat the content as absent.
  *
- * Readability na szkielecie SPA potrafi zwrocic sam pasek nawigacji i podac to
- * jako artykul. Lepiej wtedy zapisac wpis z `og:description` niz udawac, ze
- * mamy tresc. Cena: bardzo krotka notka tez wyladuje jako wpis bez tresci.
+ * On an SPA shell Readability can return the navigation bar alone and present
+ * it as the article. Better then to store an entry with `og:description` than
+ * to pretend we have content. The cost: a very short note also ends up as an
+ * entry without content.
  */
 const MIN_ARTICLE_CHARS = 140;
 
@@ -33,7 +34,7 @@ function metaContent(doc: Document, selectors: readonly string[]): string | null
 function readTitle(doc: Document): string {
   const meta = metaContent(doc, ['meta[property="og:title"]', 'meta[name="twitter:title"]']);
   const title = meta ?? doc.title.trim();
-  return title === '' ? 'Bez tytulu' : title;
+  return title === '' ? 'Untitled' : title;
 }
 
 function readDescription(doc: Document): string {
@@ -56,10 +57,10 @@ function readLang(doc: Document): string | null {
 }
 
 /**
- * Wyciaga tresc z gotowego dokumentu.
+ * Extracts the content from a ready document.
  *
- * Readability przestawia i usuwa wezly, wiec zawsze dostaje **klon** - inaczej
- * sciezka A rozjechalaby uzytkownikowi otwarta strone.
+ * Readability rearranges and removes nodes, so it always gets a **clone** -
+ * otherwise path A would wreck the page the user has open.
  */
 export function extractFromDocument(doc: Document, resolvedUrl: string): ExtractOutcome {
   const contentType = doc.contentType.toLowerCase();
@@ -69,8 +70,8 @@ export function extractFromDocument(doc: Document, resolvedUrl: string): Extract
       problem: 'unsupported-document',
       message:
         contentType === 'application/pdf'
-          ? 'To jest PDF, a nie strona HTML - Savely nie ma z czego zrobic artykulu.'
-          : `Savely zapisuje strony HTML, a ten dokument to ${contentType}.`,
+          ? 'This is a PDF, not an HTML page - Savely has nothing to build an article from.'
+          : `Savely saves HTML pages, and this document is ${contentType}.`,
     };
   }
 
@@ -78,7 +79,7 @@ export function extractFromDocument(doc: Document, resolvedUrl: string): Extract
     return {
       kind: 'refused',
       problem: 'empty-document',
-      message: 'Strona jest pusta - nie ma czego zapisac.',
+      message: 'The page is empty - there is nothing to save.',
     };
   }
 
@@ -94,8 +95,8 @@ export function extractFromDocument(doc: Document, resolvedUrl: string): Extract
   try {
     parsed = new Readability(doc.cloneNode(true) as Document).parse();
   } catch {
-    // Readability potrafi wywalic sie na egzotycznym DOM-ie. To nie jest powod,
-    // zeby zgubic zapis - schodzimy do wpisu bez tresci.
+    // Readability can blow up on an exotic DOM. That is no reason to lose the
+    // save - we fall back to an entry without content.
     parsed = null;
   }
 
@@ -136,9 +137,10 @@ export function extractFromDocument(doc: Document, resolvedUrl: string): Extract
 }
 
 /**
- * Wariant dla sciezki B: HTML pobrany `fetch`em, bez zywej karty.
- * `<base>` musi trafic do dokumentu, zanim Readability zacznie rozwiazywac
- * adresy - dokument z DOMParsera dziedziczy baseURI po stronie rozszerzenia.
+ * The variant for path B: HTML pulled in with `fetch`, with no live tab.
+ * The `<base>` element has to reach the document before Readability starts
+ * resolving addresses - a DOMParser document inherits its baseURI from the
+ * extension page.
  */
 export function extractFromHtml(html: string, resolvedUrl: string): ExtractOutcome {
   const doc = new DOMParser().parseFromString(html, 'text/html');

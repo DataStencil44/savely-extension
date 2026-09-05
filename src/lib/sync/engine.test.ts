@@ -1,10 +1,10 @@
 /**
- * Test silnika na prawdziwej bazie (fake-indexeddb) i udawanym providerze,
- * który trzyma pliki w pamięci - dokładnie tak, jak trzymałby je Gist.
+ * An engine test against a real database (fake-indexeddb) and a fake provider
+ * that keeps the files in memory - exactly the way a Gist would keep them.
  *
- * Scenariusz jest ten, który interesuje użytkownika: „zapisałem na laptopie,
- * czy zobaczę to na telefonie". Drugie urządzenie udajemy czyszcząc bazę
- * i synchronizując ponownie - stan zdalny zostaje ten sam.
+ * The scenario is the one the user cares about: "I saved it on my laptop, will
+ * I see it on my phone?". The second device is faked by wiping the database and
+ * syncing again - the remote state stays the same.
  */
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -49,12 +49,12 @@ const { addHighlight, deleteDb, deleteItem, getContent, getItemByUrl, listHighli
 const { syncNow } = await import('./engine');
 const { METADATA_FILE } = await import('./types');
 
-/** Provider w pamięci: cała treść kontraktu i nic poza nim. */
+/** An in-memory provider: the whole contract and nothing beyond it. */
 class MemoryProvider implements SyncProvider {
   readonly id = 'memory';
-  readonly label = 'Pamięć';
-  readonly dataLocation = 'Nigdzie - to test.';
-  readonly prompt = { kind: 'picker' as const, label: 'Miejsce', help: '' };
+  readonly label = 'Memory';
+  readonly dataLocation = 'Nowhere - this is a test.';
+  readonly prompt = { kind: 'picker' as const, label: 'Location', help: '' };
 
   files: SyncFiles | null = null;
   revision: string | null = null;
@@ -67,14 +67,14 @@ class MemoryProvider implements SyncProvider {
     return Promise.resolve(true);
   }
   describe(): Promise<string | null> {
-    return Promise.resolve('pamięć');
+    return Promise.resolve('memory');
   }
   pull(): Promise<RemoteSnapshot> {
     return Promise.resolve({ files: this.files, revision: this.revision });
   }
   push(files: SyncFiles, expectedRevision: string | null): Promise<string> {
     if (expectedRevision !== this.revision) {
-      throw new Error('wersja się rozjechała');
+      throw new Error('the revision diverged');
     }
     this.files = files;
     this.pushes += 1;
@@ -86,7 +86,7 @@ class MemoryProvider implements SyncProvider {
   }
 }
 
-const URL_A = 'https://a.example/artykul';
+const URL_A = 'https://a.example/article';
 
 beforeEach(async () => {
   await deleteDb();
@@ -96,21 +96,21 @@ afterEach(async () => {
   await deleteDb();
 });
 
-describe('pełne przejście', () => {
-  it('wysyła stan lokalny, a drugie urządzenie dostaje go w całości', async () => {
+describe('a full pass', () => {
+  it('pushes the local state and the second device receives all of it', async () => {
     const provider = new MemoryProvider();
 
-    // --- urządzenie A ---
-    const item = await saveItem({ url: URL_A, title: 'Artykuł', tags: ['rust'] });
-    await setContent(item.id, { html: '<p>treść</p>', text: 'treść' });
-    await addHighlight({ itemId: item.id, text: 'cytat', start: 0, end: 5, note: 'ważne' });
+    // --- device A ---
+    const item = await saveItem({ url: URL_A, title: 'An article', tags: ['rust'] });
+    await setContent(item.id, { html: '<p>content</p>', text: 'content' });
+    await addHighlight({ itemId: item.id, text: 'a quote', start: 0, end: 7, note: 'important' });
 
     const first = await syncNow(provider);
     expect(first.pushed).toBe(1);
     expect(first.added).toBe(0);
-    expect(provider.files?.[METADATA_FILE]).toContain('"title": "Artykuł"');
+    expect(provider.files?.[METADATA_FILE]).toContain('"title": "An article"');
 
-    // --- urządzenie B: ta sama skrzynka, pusta baza ---
+    // --- device B: the same mailbox, an empty database ---
     await deleteDb();
     const second = await syncNow(provider);
 
@@ -119,13 +119,13 @@ describe('pełne przejście', () => {
     expect(second.highlights).toBe(1);
 
     const restored = await getItemByUrl(URL_A);
-    expect(restored?.title).toBe('Artykuł');
+    expect(restored?.title).toBe('An article');
     expect(restored?.tags).toEqual(['rust']);
-    expect((await getContent(restored?.id ?? ''))?.html).toBe('<p>treść</p>');
-    expect((await listHighlights(restored?.id ?? ''))[0]?.note).toBe('ważne');
+    expect((await getContent(restored?.id ?? ''))?.html).toBe('<p>content</p>');
+    expect((await listHighlights(restored?.id ?? ''))[0]?.note).toBe('important');
   });
 
-  it('drugie przejście bez zmian nie rusza bazy', async () => {
+  it('a second pass with no changes leaves the database alone', async () => {
     const provider = new MemoryProvider();
     await saveItem({ url: URL_A });
 
@@ -135,7 +135,7 @@ describe('pełne przejście', () => {
     expect(again).toMatchObject({ added: 0, updated: 0, deleted: 0, contents: 0, highlights: 0 });
   });
 
-  it('kasowanie propaguje się zamiast wracać przy następnym scaleniu', async () => {
+  it('a deletion propagates instead of coming back at the next merge', async () => {
     const provider = new MemoryProvider();
 
     const item = await saveItem({ url: URL_A });
@@ -145,7 +145,7 @@ describe('pełne przejście', () => {
     await syncNow(provider);
     expect(provider.files?.[METADATA_FILE]).toContain('"tombstones"');
 
-    // Urządzenie B, które wciąż ma tę pozycję, musi ją stracić.
+    // Device B, which still has this item, has to lose it.
     await deleteDb();
     await saveItem({ url: URL_A, savedAt: 1_000 });
     const report = await syncNow(provider);
@@ -154,26 +154,26 @@ describe('pełne przejście', () => {
     expect(await getItemByUrl(URL_A)).toBeUndefined();
   });
 
-  it('zmiana na drugim urządzeniu dociera i wygrywa po dacie', async () => {
+  it('a change on the second device arrives and wins by date', async () => {
     const provider = new MemoryProvider();
 
-    const item = await saveItem({ url: URL_A, title: 'Tytuł' });
+    const item = await saveItem({ url: URL_A, title: 'A title' });
     await syncNow(provider);
 
-    // Urządzenie B zmienia stan i wysyła.
-    await updateItem(item.id, { favorite: true, tags: ['zdalny'] });
+    // Device B changes the state and pushes.
+    await updateItem(item.id, { favorite: true, tags: ['remote'] });
     await syncNow(provider);
 
-    // Urządzenie A: starsza wersja tej samej pozycji, z własnym tagiem.
+    // Device A: an older version of the same item, with its own tag.
     await deleteDb();
-    await saveItem({ url: URL_A, savedAt: 500, tags: ['lokalny'] });
+    await saveItem({ url: URL_A, savedAt: 500, tags: ['local'] });
 
     const report = await syncNow(provider);
 
     const merged = await getItemByUrl(URL_A);
     expect(report.conflicts).toBe(1);
     expect(merged?.favorite).toBe(true);
-    // Tagi to suma z obu stron, mimo że pozycję wygrała jedna.
-    expect(merged?.tags).toEqual(['lokalny', 'zdalny']);
+    // The tags are the union of both sides, even though one side won the item.
+    expect(merged?.tags).toEqual(['local', 'remote']);
   });
 });

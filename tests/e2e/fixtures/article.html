@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>A centre without cars — The Test Daily</title>
+    <meta property="og:title" content="A centre without cars" />
+    <meta property="og:description" content="Eight streets will change their traffic pattern." />
+    <meta name="author" content="Anna Kowalska" />
+  </head>
+  <body>
+    <header>
+      <nav><a href="/section">Section</a> · <a href="/contact">Contact</a></nav>
+    </header>
+
+    <article>
+      <h1>A centre without cars</h1>
+      <p class="byline">Anna Kowalska</p>
+
+      <p>
+        The city council adopted a resolution yesterday changing traffic patterns in the very centre.
+        The changes cover eight streets, and the first signs will go up later this month.
+        Officials argue that pedestrians and cyclists will benefit most from the rebuild,
+        because the pavements will be widened at the expense of parking spaces along the roadway.
+      </p>
+
+      <h2>What will change</h2>
+      <p>
+        Long Street faces the most change and will become a pedestrian zone along its whole length.
+        Residents and delivery drivers keep vehicle access, but only during the morning hours.
+        Councillors say that after a year they will review whether the scheme worked, and then decide
+        whether to extend it to further streets near the railway station.
+      </p>
+
+      <figure>
+        <img src="/photo.png" alt="The street after the rebuild" />
+        <figcaption>Long Street after the rebuild</figcaption>
+      </figure>
+
+      <p>
+        Opponents of the change point to shopkeepers, who fear a drop in takings once the street
+        closes to cars. The city promises them compensation in the form of lower rent for the first
+        year, plus new parking spaces in a multi-storey car park two blocks away.
+      </p>
+
+      <!-- Payloads that have no business reaching the reader. -->
+      <script>
+        window.__savelyXss = 'this script has no business running in the reader';
+      </script>
+      <p><a href="javascript:alert(1)">a link that should not survive</a></p>
+      <img src="no-such-file.png" onerror="window.__savelyXss = 'onerror'" alt="empty" />
+    </article>
+
+    <footer><p>The site footer, which we do not want in the reader.</p></footer>
+  </body>
+</html>

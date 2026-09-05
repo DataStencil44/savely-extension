@@ -1,8 +1,8 @@
 /**
- * Budowa karty pozycji.
+ * Building an item card.
  *
- * Cale UI skladamy przez `createElement` + `textContent` - zadnego `innerHTML`
- * z danymi uzytkownika ani ze strony (CLAUDE.md 3).
+ * The whole UI is assembled with `createElement` + `textContent` - no
+ * `innerHTML` with user data or page data (CLAUDE.md 3).
  */
 import type { SavedItem } from '@/lib/db';
 
@@ -27,7 +27,7 @@ function button(label: string, glyph: string, onClick: () => void, pressed?: boo
   element.setAttribute('aria-label', label);
   if (pressed !== undefined) element.setAttribute('aria-pressed', String(pressed));
   element.addEventListener('click', (event) => {
-    // Karta jako calosc otwiera czytnik - przycisk nie moze tego wywolac przy okazji.
+    // The card as a whole opens the reader - a button must not trigger that too.
     event.stopPropagation();
     onClick();
   });
@@ -79,7 +79,7 @@ export function createCard(item: SavedItem, index: number, callbacks: CardCallba
     chip.type = 'button';
     chip.className = 'chip';
     chip.textContent = `#${tag}`;
-    chip.title = `Filtruj po #${tag}`;
+    chip.title = `Filter by #${tag}`;
     chip.addEventListener('click', (event) => {
       event.stopPropagation();
       callbacks.filterByTag(tag);
@@ -96,18 +96,18 @@ export function createCard(item: SavedItem, index: number, callbacks: CardCallba
 
   const actions = document.createElement('div');
   actions.className = 'card__actions';
-  const tagButton = button('Tagi (t)', '#', () => {
+  const tagButton = button('Tags (t)', '#', () => {
     callbacks.editTags(item, tagButton);
   });
   actions.append(
-    button('Czytaj (Enter)', '▶', () => {
+    button('Read (Enter)', '▶', () => {
       callbacks.openReader(item);
     }),
-    button('Otwórz oryginał (o)', '↗', () => {
+    button('Open original (o)', '↗', () => {
       callbacks.openOriginal(item);
     }),
     button(
-      item.favorite ? 'Usuń z ulubionych (f)' : 'Dodaj do ulubionych (f)',
+      item.favorite ? 'Remove from favorites (f)' : 'Add to favorites (f)',
       item.favorite ? '★' : '☆',
       () => {
         callbacks.toggleFavorite(item);
@@ -115,7 +115,7 @@ export function createCard(item: SavedItem, index: number, callbacks: CardCallba
       item.favorite,
     ),
     button(
-      item.archived ? 'Przywróć z archiwum (a)' : 'Archiwizuj (a)',
+      item.archived ? 'Restore from archive (a)' : 'Archive (a)',
       item.archived ? '↩' : '▤',
       () => {
         callbacks.toggleArchive(item);
@@ -123,7 +123,7 @@ export function createCard(item: SavedItem, index: number, callbacks: CardCallba
       item.archived,
     ),
     tagButton,
-    button('Usuń (Delete)', '✕', () => {
+    button('Delete (Delete)', '✕', () => {
       callbacks.remove(item);
     }),
   );
@@ -139,7 +139,7 @@ export function createCard(item: SavedItem, index: number, callbacks: CardCallba
   return card;
 }
 
-/** Pierwszy obrazek z zapisanej tresci - zrodlo miniatury. */
+/** The first image in the stored content - the source of the thumbnail. */
 export function findLeadImage(html: string): string | null {
   const match = /<img\b[^>]*\bsrc="(https?:\/\/[^"]+)"/i.exec(html);
   return match?.[1] ?? null;

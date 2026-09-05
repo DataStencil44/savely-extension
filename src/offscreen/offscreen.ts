@@ -1,9 +1,9 @@
 /**
- * Dokument offscreen - wylacznie Chromium.
+ * The offscreen document - Chromium only.
  *
- * Service worker w Chrome nie ma DOM-u, wiec nie ma tez `DOMParser`. Sciezka B
- * (fetch w tle) potrzebuje go do sparsowania pobranego HTML-a. Firefox tego
- * pliku nie uzywa: jego strona tla ma DOM i parsuje u siebie.
+ * Chrome's service worker has no DOM, and therefore no `DOMParser`. Path B
+ * (background fetch) needs one to parse the downloaded HTML. Firefox does not
+ * use this file: its background page has a DOM and parses in place.
  */
 import browser from 'webextension-polyfill';
 

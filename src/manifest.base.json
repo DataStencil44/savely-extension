@@ -2,10 +2,10 @@
   "manifest_version": 3,
   "name": "Savely",
   "short_name": "Savely",
-  "description": "Zapisz teraz, przeczytaj później — offline, bez konta, bez chmury.",
+  "description": "Save now, read later - offline, no account, no cloud.",
   "version": "0.1.0",
   "action": {
-    "default_title": "Zapisz do Savely",
+    "default_title": "Save to Savely",
     "default_popup": "ui/list/list.html",
     "default_icon": {
       "16": "icons/icon-16.png",
@@ -38,7 +38,7 @@
         "default": "Ctrl+Shift+S",
         "mac": "Command+Shift+S"
       },
-      "description": "Zapisz bieżącą stronę do Savely"
+      "description": "Save the current page to Savely"
     }
   },
   "icons": {

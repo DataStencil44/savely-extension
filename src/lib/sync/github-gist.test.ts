@@ -1,16 +1,16 @@
 /**
- * Testy providera GitHub Gist z podstawionym `fetch`.
+ * GitHub Gist provider tests with a stubbed `fetch`.
  *
- * Sprawdzamy trzy rzeczy, na których zależy najbardziej: token nie wychodzi
- * poza `storage.local`, prośba o dostęp do domeny wychodzi przed jakimkolwiek
- * zapytaniem, a wyścig dwóch urządzeń kończy się czytelnym błędem zamiast
- * cichym nadpisaniem cudzych danych.
+ * We check the three things that matter most: the token never leaves
+ * `storage.local`, the host permission request goes out before any request at
+ * all, and a race between two devices ends in a readable error rather than
+ * silently overwriting someone else's data.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const storage = vi.hoisted(() => {
   const local: Record<string, unknown> = {};
-  /** Zapisy do `storage.sync` - ma pozostać pusty przez cały test. */
+  /** Writes to `storage.sync` - it must stay empty for the whole test. */
   const sync: Record<string, unknown> = {};
   let granted = true;
 
@@ -78,7 +78,7 @@ interface Call {
 
 const calls: Call[] = [];
 
-/** Kolejka odpowiedzi: każde wywołanie `fetch` zdejmuje pierwszą z brzegu. */
+/** The response queue: every `fetch` call takes the first one off the front. */
 let responses: { status?: number; body: unknown; text?: string }[] = [];
 
 function mockFetch(): void {
@@ -113,9 +113,9 @@ beforeEach(() => {
   mockFetch();
 });
 
-describe('połączenie', () => {
-  it('token ląduje w storage.local i nigdy w storage.sync', async () => {
-    responses = [{ body: { login: 'ktos' } }, { body: [] }];
+describe('connecting', () => {
+  it('the token lands in storage.local and never in storage.sync', async () => {
+    responses = [{ body: { login: 'someone' } }, { body: [] }];
 
     await new GitHubGistProvider().authorize('ghp_token');
 
@@ -123,7 +123,7 @@ describe('połączenie', () => {
     expect(storage.sync).toEqual({});
   });
 
-  it('bez zgody na domenę nie leci ani jedno zapytanie', async () => {
+  it('without the host permission not a single request goes out', async () => {
     storage.setGranted(false);
 
     await expect(new GitHubGistProvider().authorize('ghp_token')).rejects.toThrow(SyncAccessError);
@@ -131,29 +131,29 @@ describe('połączenie', () => {
     expect(storage.local['sync-github']).toBeUndefined();
   });
 
-  it('pusty token odrzucamy przed pytaniem o cokolwiek', async () => {
-    await expect(new GitHubGistProvider().authorize('   ')).rejects.toThrow(/Wklej token/);
+  it('an empty token is rejected before anything is asked', async () => {
+    await expect(new GitHubGistProvider().authorize('   ')).rejects.toThrow(/Paste a token/);
     expect(calls).toEqual([]);
   });
 
-  it('odrzucony token daje komunikat, a nie surowy błąd HTTP', async () => {
+  it('a rejected token gives a message, not a raw HTTP error', async () => {
     responses = [{ status: 401, body: {} }];
-    await expect(new GitHubGistProvider().authorize('zly')).rejects.toThrow(/odrzucił token/);
+    await expect(new GitHubGistProvider().authorize('bad')).rejects.toThrow(/rejected the token/);
   });
 
-  it('istniejący gist Savely jest odnajdywany zamiast tworzenia drugiego', async () => {
+  it('an existing Savely gist is found instead of creating a second one', async () => {
     responses = [
-      { body: { login: 'ktos' } },
-      { body: [{ id: 'inny', files: { 'notatki.txt': {} } }, { id: 'nasz', files: { [METADATA_FILE]: {} } }] },
+      { body: { login: 'someone' } },
+      { body: [{ id: 'other', files: { 'notes.txt': {} } }, { id: 'ours', files: { [METADATA_FILE]: {} } }] },
     ];
 
     await new GitHubGistProvider().authorize('ghp_token');
 
-    expect(storage.local['sync-github']).toEqual({ token: 'ghp_token', gistId: 'nasz' });
+    expect(storage.local['sync-github']).toEqual({ token: 'ghp_token', gistId: 'ours' });
   });
 
-  it('rozłączenie kasuje poświadczenia, ale nie rusza gista', async () => {
-    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'nasz' };
+  it('disconnecting erases the credentials but leaves the gist alone', async () => {
+    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'ours' };
 
     await new GitHubGistProvider().disconnect();
 
@@ -163,19 +163,19 @@ describe('połączenie', () => {
 });
 
 describe('pull', () => {
-  it('bez gista oddaje pustkę zamiast błędu', async () => {
+  it('with no gist it returns emptiness rather than an error', async () => {
     storage.local['sync-github'] = { token: 'ghp_token', gistId: null };
 
     expect(await new GitHubGistProvider().pull()).toEqual({ files: null, revision: null });
     expect(calls).toEqual([]);
   });
 
-  it('czyta pliki i wersję z historii', async () => {
-    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'nasz' };
+  it('reads the files and the revision from the history', async () => {
+    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'ours' };
     responses = [
       {
         body: {
-          id: 'nasz',
+          id: 'ours',
           files: { [METADATA_FILE]: { content: '{"format":"savely-sync"}' } },
           history: [{ version: 'sha-2' }, { version: 'sha-1' }],
         },
@@ -186,35 +186,35 @@ describe('pull', () => {
 
     expect(snapshot.files?.[METADATA_FILE]).toBe('{"format":"savely-sync"}');
     expect(snapshot.revision).toBe('sha-2');
-    expect(calls[0]?.url).toBe('https://api.github.com/gists/nasz');
+    expect(calls[0]?.url).toBe('https://api.github.com/gists/ours');
   });
 
-  it('plik ucięty przez API dociąga się z raw_url', async () => {
-    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'nasz' };
+  it('a file truncated by the API is fetched from raw_url', async () => {
+    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'ours' };
     responses = [
       {
         body: {
           files: {
             [METADATA_FILE]: {
               truncated: true,
-              content: 'ucięt…',
-              raw_url: 'https://gist.githubusercontent.com/pelny',
+              content: 'truncat\u2026',
+              raw_url: 'https://gist.githubusercontent.com/full',
             },
           },
           history: [{ version: 'sha-1' }],
         },
       },
-      { body: {}, text: 'pełna treść' },
+      { body: {}, text: 'the full content' },
     ];
 
     const snapshot = await new GitHubGistProvider().pull();
 
-    expect(snapshot.files?.[METADATA_FILE]).toBe('pełna treść');
-    expect(calls[1]?.url).toBe('https://gist.githubusercontent.com/pelny');
+    expect(snapshot.files?.[METADATA_FILE]).toBe('the full content');
+    expect(calls[1]?.url).toBe('https://gist.githubusercontent.com/full');
   });
 
-  it('skasowany ręcznie gist zaczyna od nowa, zamiast blokować synchronizację', async () => {
-    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'znikniety' };
+  it('a gist deleted by hand starts over instead of blocking sync', async () => {
+    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'vanished' };
     responses = [{ status: 404, body: {} }];
 
     expect(await new GitHubGistProvider().pull()).toEqual({ files: null, revision: null });
@@ -223,20 +223,20 @@ describe('pull', () => {
 });
 
 describe('push', () => {
-  it('pierwszy zapis tworzy prywatnego gista i zapamiętuje jego id', async () => {
+  it('the first write creates a private gist and remembers its id', async () => {
     storage.local['sync-github'] = { token: 'ghp_token', gistId: null };
-    responses = [{ body: { id: 'nowy', history: [{ version: 'sha-1' }] } }];
+    responses = [{ body: { id: 'fresh', history: [{ version: 'sha-1' }] } }];
 
     const revision = await new GitHubGistProvider().push({ [METADATA_FILE]: '{}' }, null);
 
     expect(revision).toBe('sha-1');
     expect(calls[0]?.method).toBe('POST');
     expect(calls[0]?.body).toMatchObject({ public: false });
-    expect(storage.local['sync-github']).toEqual({ token: 'ghp_token', gistId: 'nowy' });
+    expect(storage.local['sync-github']).toEqual({ token: 'ghp_token', gistId: 'fresh' });
   });
 
-  it('kolejny zapis idzie PATCH-em po sprawdzeniu wersji', async () => {
-    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'nasz' };
+  it('a subsequent write goes out as a PATCH after checking the revision', async () => {
+    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'ours' };
     responses = [
       { body: { history: [{ version: 'sha-1' }] } },
       { body: { history: [{ version: 'sha-2' }] } },
@@ -248,9 +248,9 @@ describe('push', () => {
     expect(calls.map((call) => call.method)).toEqual(['GET', 'PATCH']);
   });
 
-  it('zmiana po drugiej stronie przerywa zapis zamiast nadpisać cudze dane', async () => {
-    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'nasz' };
-    responses = [{ body: { history: [{ version: 'sha-inna' }] } }];
+  it('a change on the other side aborts the write instead of overwriting data', async () => {
+    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'ours' };
+    responses = [{ body: { history: [{ version: 'sha-other' }] } }];
 
     await expect(
       new GitHubGistProvider().push({ [METADATA_FILE]: '{}' }, 'sha-1'),
@@ -259,11 +259,11 @@ describe('push', () => {
     expect(calls.map((call) => call.method)).toEqual(['GET']);
   });
 
-  it('cofnięta zgoda na domenę zatrzymuje synchronizację z jasnym komunikatem', async () => {
-    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'nasz' };
+  it('a revoked host permission stops the sync with a clear message', async () => {
+    storage.local['sync-github'] = { token: 'ghp_token', gistId: 'ours' };
     storage.setGranted(false);
 
-    await expect(new GitHubGistProvider().pull()).rejects.toThrow(/Cofnięto zgodę/);
+    await expect(new GitHubGistProvider().pull()).rejects.toThrow(/Permission for api.github.com was revoked/);
     expect(calls).toEqual([]);
   });
 });

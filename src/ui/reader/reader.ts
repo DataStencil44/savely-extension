@@ -1,10 +1,11 @@
 /**
- * Czytnik: `index.html?id=<itemId>`, otwierany w nowej karcie z listy.
+ * The reader: `index.html?id=<itemId>`, opened in a new tab from the list.
  *
- * Wszystko dzieje się lokalnie. Jedyny ruch na zewnątrz to obrazki z oryginału
- * i da się go wyłączyć jednym przełącznikiem ("nie ładuj obrazków zdalnych").
- * Treść wchodzi do DOM-u wyłącznie jako fragment po DOMPurify - żadnego
- * `innerHTML`, żadnych inline skryptów, CSP zostaje domyślne (CLAUDE.md 3, 5.6).
+ * Everything happens locally. The only outbound traffic is images from the
+ * original, and a single toggle turns it off ("don't load remote images").
+ * Content enters the DOM only as a fragment that went through DOMPurify - no
+ * `innerHTML`, no inline scripts, the CSP stays at its default
+ * (CLAUDE.md 3, 5.6).
  */
 import browser from 'webextension-polyfill';
 
@@ -43,7 +44,7 @@ import {
   type Anchor,
 } from './highlight';
 
-/** Po tylu procentach treści uznajemy artykuł za przeczytany. */
+/** Past this fraction of the content we consider the article read. */
 const READ_THRESHOLD = 0.9;
 const PROGRESS_SAVE_MS = 1_200;
 const SCROLL_STEP = 120;
@@ -70,7 +71,7 @@ let highlights: Highlight[] = [];
 let markedRead = false;
 
 // ---------------------------------------------------------------------------
-// Drobiazgi UI
+// Small UI helpers
 // ---------------------------------------------------------------------------
 
 let toastTimer: number | undefined;
@@ -94,7 +95,7 @@ function message(text: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Ustawienia
+// Settings
 // ---------------------------------------------------------------------------
 
 function applySettings(next: ReaderSettings): void {
@@ -121,8 +122,8 @@ function applySettings(next: ReaderSettings): void {
 }
 
 /**
- * Prywatność: przy wyłączonych obrazkach zdejmujemy `src`, ale zapamiętujemy go
- * w `data-src`, żeby ponowne włączenie nie wymagało przeładowania strony.
+ * Privacy: with images turned off we strip `src` but remember it in `data-src`,
+ * so turning them back on does not require reloading the page.
  */
 function applyImagePolicy(): void {
   if (el.article === null) return;
@@ -191,12 +192,12 @@ function wireSettings(): void {
     void patchSettings({ remoteImages: !(el.remoteImages?.checked ?? false) });
   });
 
-  // Zmiana w innej karcie ma się przenieść tutaj bez przeładowania.
+  // A change made in another tab should land here without a reload.
   onSettingsChanged(applySettings);
 }
 
 // ---------------------------------------------------------------------------
-// Postęp czytania
+// Reading progress
 // ---------------------------------------------------------------------------
 
 function scrollRatio(): number {
@@ -239,7 +240,7 @@ function restoreScroll(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Zaznaczanie i podświetlenia
+// Selection and highlights
 // ---------------------------------------------------------------------------
 
 function popoverButton(label: string, run: () => void): HTMLButtonElement {
@@ -248,7 +249,7 @@ function popoverButton(label: string, run: () => void): HTMLButtonElement {
   button.className = 'popover__action';
   button.textContent = label;
   button.addEventListener('mousedown', (event) => {
-    // `mousedown`, bo klik w przycisk kasuje zaznaczenie zanim dojdzie `click`.
+    // `mousedown`, because clicking the button clears the selection before `click`.
     event.preventDefault();
     run();
   });
@@ -280,13 +281,13 @@ function showPopover(rect: DOMRect, children: readonly HTMLElement[]): void {
 async function copyText(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
-    toast('Skopiowano.');
+    toast('Copied.');
   } catch {
-    toast('Przeglądarka nie pozwoliła skopiować.');
+    toast('The browser refused to copy.');
   }
 }
 
-/** Zapis w bazie -> kotwica dla modułu podświetleń (tam cytat nazywa się `quote`). */
+/** Database record -> anchor for the highlight module (where the quote is called `quote`). */
 function anchorOf(highlight: Highlight): Anchor {
   return {
     start: highlight.start,
@@ -297,7 +298,7 @@ function anchorOf(highlight: Highlight): Anchor {
   };
 }
 
-/** Odtwarza jedno podświetlenie w treści. `false`, gdy cytatu już nie ma. */
+/** Repaints one highlight in the content. `false` when the quote is gone. */
 function paint(highlight: Highlight): boolean {
   if (el.article === null) return false;
 
@@ -318,7 +319,7 @@ async function restoreHighlights(itemId: string): Promise<void> {
 
   const lost = highlights.filter((highlight) => !paint(highlight)).length;
   if (lost > 0) {
-    toast(`Nie udało się odtworzyć ${String(lost)} podświetleń - treść się zmieniła.`);
+    toast(`Could not restore ${String(lost)} highlight(s) - the content has changed.`);
   }
 }
 
@@ -329,14 +330,14 @@ function noteEditor(highlight: Highlight): HTMLElement {
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'popover__input';
-  input.placeholder = 'Notatka';
+  input.placeholder = 'Note';
   input.value = highlight.note ?? '';
-  input.setAttribute('aria-label', 'Notatka do zaznaczenia');
+  input.setAttribute('aria-label', 'Note for the selection');
 
   const save = document.createElement('button');
   save.type = 'submit';
   save.className = 'popover__action';
-  save.textContent = 'Zapisz';
+  save.textContent = 'Save';
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -352,7 +353,7 @@ function noteEditor(highlight: Highlight): HTMLElement {
         }
       }
       hidePopover();
-      toast(note === null ? 'Notatka usunięta.' : 'Notatka zapisana.');
+      toast(note === null ? 'Note removed.' : 'Note saved.');
     });
   });
 
@@ -369,7 +370,7 @@ async function createHighlight(range: Range, withNote: boolean): Promise<void> {
   const map = buildTextMap(el.article);
   const offsets = offsetsFromRange(map, range);
   if (offsets === null) {
-    toast('Nie potrafię zakotwiczyć tego zaznaczenia.');
+    toast('This selection cannot be anchored.');
     return;
   }
 
@@ -389,7 +390,7 @@ async function createHighlight(range: Range, withNote: boolean): Promise<void> {
 
   if (!withNote) {
     hidePopover();
-    toast('Podświetlono.');
+    toast('Highlighted.');
     return;
   }
 
@@ -414,14 +415,14 @@ function onSelectionChange(): void {
   if (text === '') return;
 
   showPopover(range.getBoundingClientRect(), [
-    popoverButton('Podświetl', () => {
+    popoverButton('Highlight', () => {
       void createHighlight(range.cloneRange(), false);
     }),
-    popoverButton('Kopiuj', () => {
+    popoverButton('Copy', () => {
       void copyText(text);
       hidePopover();
     }),
-    popoverButton('Notatka', () => {
+    popoverButton('Note', () => {
       void createHighlight(range.cloneRange(), true);
     }),
   ]);
@@ -437,26 +438,26 @@ function onArticleClick(event: MouseEvent): void {
 
   event.preventDefault();
   showPopover(mark.getBoundingClientRect(), [
-    popoverButton('Notatka', () => {
+    popoverButton('Note', () => {
       showPopover(mark.getBoundingClientRect(), [noteEditor(highlight)]);
     }),
-    popoverButton('Kopiuj', () => {
+    popoverButton('Copy', () => {
       void copyText(highlight.text);
       hidePopover();
     }),
-    popoverButton('Usuń', () => {
+    popoverButton('Delete', () => {
       void deleteHighlight(highlight.id).then(() => {
         highlights = highlights.filter((entry) => entry.id !== highlight.id);
         if (el.article !== null) unwrapHighlight(el.article, highlight.id);
         hidePopover();
-        toast('Podświetlenie usunięte.');
+        toast('Highlight removed.');
       });
     }),
   ]);
 }
 
 // ---------------------------------------------------------------------------
-// Akcje na pozycji i klawiatura
+// Item actions and keyboard
 // ---------------------------------------------------------------------------
 
 function renderItemState(): void {
@@ -471,14 +472,14 @@ async function toggleFavorite(): Promise<void> {
   if (item === null) return;
   item = await updateItem(item.id, { favorite: !item.favorite });
   renderItemState();
-  toast(item.favorite ? 'Dodano do ulubionych.' : 'Usunięto z ulubionych.');
+  toast(item.favorite ? 'Added to favorites.' : 'Removed from favorites.');
 }
 
 async function toggleArchive(): Promise<void> {
   if (item === null) return;
   item = await updateItem(item.id, { archived: !item.archived });
   renderItemState();
-  toast(item.archived ? 'Zarchiwizowano.' : 'Przywrócono z archiwum.');
+  toast(item.archived ? 'Archived.' : 'Restored from the archive.');
 }
 
 function openList(): void {
@@ -533,7 +534,7 @@ function onKeyDown(event: KeyboardEvent): void {
 }
 
 // ---------------------------------------------------------------------------
-// Start
+// Startup
 // ---------------------------------------------------------------------------
 
 function renderHeader(loaded: SavedItem): HTMLElement {
@@ -551,7 +552,7 @@ function renderHeader(loaded: SavedItem): HTMLElement {
     loaded.byline,
     formatDomain(loaded.url),
     formatReadingTime(loaded.estReadingMinutes),
-    `zapisano ${formatSavedAt(loaded.savedAt)}`,
+    `saved ${formatSavedAt(loaded.savedAt)}`,
   ]
     .filter((part): part is string => part !== null && part !== '')
     .join(' · ');
@@ -575,7 +576,7 @@ async function main(): Promise<void> {
   });
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('selectionchange', () => {
-    // Krótka zwłoka: `selectionchange` leci też w trakcie ciągnięcia myszą.
+    // A short delay: `selectionchange` also fires while dragging the mouse.
     setTimeout(onSelectionChange, 150);
   });
   document.addEventListener('mousedown', (event) => {
@@ -590,13 +591,13 @@ async function main(): Promise<void> {
 
   const id = new URLSearchParams(location.search).get('id');
   if (id === null) {
-    message('Brak identyfikatora pozycji w adresie.');
+    message('The address has no item identifier.');
     return;
   }
 
   const loaded = await getItem(id);
   if (loaded === undefined) {
-    message('Nie ma takiej pozycji - mogła zostać usunięta.');
+    message('No such item - it may have been deleted.');
     return;
   }
   item = loaded;
@@ -614,8 +615,8 @@ async function main(): Promise<void> {
     note.className = 'note';
     note.textContent =
       loaded.excerpt === ''
-        ? 'Ta pozycja nie ma zapisanej treści - otwórz oryginał.'
-        : `${loaded.excerpt}\n\nTreści nie udało się wyciągnąć - otwórz oryginał.`;
+        ? 'This item has no stored content - open the original.'
+        : `${loaded.excerpt}\n\nThe content could not be extracted - open the original.`;
     el.article.append(note);
     onScroll();
     return;
@@ -631,8 +632,8 @@ async function main(): Promise<void> {
   await restoreHighlights(loaded.id);
 
   restoreScroll();
-  // Obrazki dociągają się później i zmieniają wysokość strony - po ich
-  // załadowaniu wracamy na zapamiętane miejsce jeszcze raz.
+  // Images load later and change the page height - once they are in, we jump
+  // back to the remembered position one more time.
   window.addEventListener('load', restoreScroll, { once: true });
   onScroll();
 }

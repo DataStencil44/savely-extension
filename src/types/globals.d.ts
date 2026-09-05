@@ -1,12 +1,12 @@
-/** Stale wstrzykiwane przez `define` w vite.config.ts. */
+/** Constants injected through `define` in vite.config.ts. */
 declare const __TARGET__: 'chrome' | 'firefox';
 declare const __DEV__: boolean;
 
 /**
- * Minimalna deklaracja API `offscreen` - istnieje tylko w Chromium i nie ma go
- * w webextension-polyfill. Uzywane wylacznie w `src/lib/offscreen.ts`, przez
- * feature-detect (CLAUDE.md 5.4). W Firefoksie `chrome` istnieje, ale
- * `chrome.offscreen` jest `undefined` - i o to w tym sprawdzeniu chodzi.
+ * A minimal declaration of the `offscreen` API - it exists only in Chromium and
+ * is absent from webextension-polyfill. Used solely in `src/lib/offscreen.ts`,
+ * through a feature detect (CLAUDE.md 5.4). In Firefox `chrome` exists but
+ * `chrome.offscreen` is `undefined` - which is exactly what that check is for.
  */
 declare const chrome:
   | {

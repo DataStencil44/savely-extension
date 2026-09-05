@@ -1,47 +1,47 @@
 /**
- * Kontrakt synchronizacji: co provider musi umieć i co przez niego przechodzi.
+ * The sync contract: what a provider must do and what passes through it.
  *
- * Provider jest **głupi z założenia** - dostaje kilka nazwanych plików
- * tekstowych i nieprzezroczysty znacznik wersji, oddaje to samo. Nie wie nic
- * o pozycjach, tagach ani scalaniu; nie parsuje zawartości. Dzięki temu
- * dopisanie drugiego providera (np. "lokalny folder" na File System Access API,
- * Chrome-only) to jeden nowy plik i wpis w rejestrze - reszta kodu zostaje
- * nietknięta.
+ * A provider is **deliberately dumb** - it receives a few named text files and
+ * an opaque revision marker, and returns the same. It knows nothing about
+ * items, tags or merging; it never parses the contents. That makes adding a
+ * second provider (a "local folder" on the File System Access API, Chrome-only,
+ * say) a single new file plus an entry in the registry - the rest of the code
+ * stays untouched.
  *
- * Serializacją, kompresją i scalaniem zajmują się `payload.ts` i `merge.ts`,
- * a zapisem do bazy `applySync` z `src/lib/db.ts`.
+ * Serialization, compression and merging are handled by `payload.ts` and
+ * `merge.ts`, and writing to the database by `applySync` in `src/lib/db.ts`.
  */
 
-/** Nazwa pliku -> jego zawartość tekstowa. Provider nie zagląda do środka. */
+/** File name -> its text content. The provider never looks inside. */
 export type SyncFiles = Record<string, string>;
 
 export interface RemoteSnapshot {
-  /** `null`, gdy po drugiej stronie nie ma jeszcze niczego. */
+  /** `null` when there is nothing on the other side yet. */
   files: SyncFiles | null;
   /**
-   * Znacznik wersji zdalnej - sha commita, etag, czas modyfikacji pliku.
-   * Nieprzezroczysty: silnik tylko oddaje go z powrotem przy zapisie, żeby
-   * provider mógł wykryć, że ktoś zmienił dane w międzyczasie.
+   * The remote revision marker - a commit sha, an etag, a file mtime.
+   * Opaque: the engine only hands it back on write, so the provider can detect
+   * that someone changed the data in the meantime.
    */
   revision: string | null;
 }
 
-/** Jak UI ma poprosić o połączenie. Każdy provider łączy się inaczej. */
+/** How the UI should ask for a connection. Every provider connects differently. */
 export interface ConnectPrompt {
-  /** `secret` = pole tekstowe (token), `picker` = jeden przycisk (folder). */
+  /** `secret` = a text field (a token), `picker` = a single button (a folder). */
   kind: 'secret' | 'picker';
   label: string;
-  /** Co to jest i skąd to wziąć - pokazywane pod polem. */
+  /** What it is and where to get it - shown below the field. */
   help: string;
   placeholder?: string;
 }
 
-/** Podnoszony, gdy zdalna wersja zmieniła się między odczytem a zapisem. */
+/** Raised when the remote revision changed between the read and the write. */
 export class SyncConflictError extends Error {
   override readonly name = 'SyncConflictError';
 }
 
-/** Podnoszony przy braku zgody, złym tokenie i innych problemach dostępu. */
+/** Raised on a missing permission, a bad token and other access problems. */
 export class SyncAccessError extends Error {
   override readonly name = 'SyncAccessError';
 }
@@ -50,40 +50,40 @@ export interface SyncProvider {
   readonly id: string;
   readonly label: string;
   /**
-   * Jedno zdanie o tym, gdzie fizycznie lądują dane i kto je zobaczy.
-   * UI pokazuje to **przed** połączeniem - użytkownik ma wiedzieć, na co się
-   * godzi, zanim wklei token.
+   * One sentence about where the data physically lands and who will see it.
+   * The UI shows this **before** connecting - the user should know what they
+   * are agreeing to before pasting a token.
    */
   readonly dataLocation: string;
   readonly prompt: ConnectPrompt;
 
-  /** Nawiązuje połączenie. `secret` dla `kind: 'secret'`, inaczej pominięty. */
+  /** Establishes the connection. `secret` for `kind: 'secret'`, omitted otherwise. */
   authorize(secret?: string): Promise<void>;
   isConnected(): Promise<boolean>;
-  /** Konkretne miejsce docelowe (adres gista, nazwa folderu) albo `null`. */
+  /** The concrete destination (a gist address, a folder name) or `null`. */
   describe(): Promise<string | null>;
 
   pull(): Promise<RemoteSnapshot>;
-  /** Zwraca nowy znacznik wersji. Rzuca `SyncConflictError` przy rozjeździe. */
+  /** Returns the new revision marker. Throws `SyncConflictError` on divergence. */
   push(files: SyncFiles, expectedRevision: string | null): Promise<string>;
-  /** Kasuje lokalne poświadczenia. Danych po drugiej stronie NIE rusza. */
+  /** Erases the local credentials. It does NOT touch the data on the other side. */
   disconnect(): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
-// Ładunek
+// The payload
 // ---------------------------------------------------------------------------
 
 export const SYNC_FORMAT = 'savely-sync';
 export const SYNC_FORMAT_VERSION = 1;
 
-/** Nazwy plików u providera. Stałe - po nich poznajemy własne dane. */
+/** File names at the provider. Fixed - they are how we recognize our own data. */
 export const METADATA_FILE = 'savely-sync.json';
 export const CONTENTS_FILE = 'savely-contents.json.gz.base64';
 
 /**
- * Zaznaczenie w ładunku: bez `id` i `itemId`, bo identyfikatory są lokalne dla
- * urządzenia. Tożsamość zaznaczenia to cytat plus offsety.
+ * A highlight in the payload: without `id` and `itemId`, because identifiers
+ * are local to a device. A highlight's identity is its quote plus its offsets.
  */
 export interface SyncHighlight {
   text: string;
@@ -96,8 +96,8 @@ export interface SyncHighlight {
 }
 
 /**
- * Pozycja w ładunku. Kluczem jest **znormalizowany adres**, nie `id` - dwa
- * urządzenia nigdy nie wygenerują tych samych identyfikatorów.
+ * An item in the payload. The key is the **normalized address**, not `id` - two
+ * devices will never generate the same identifiers.
  */
 export interface SyncItem {
   url: string;
@@ -134,26 +134,26 @@ export interface SyncPayload {
   updatedAt: number;
   items: SyncItem[];
   tombstones: { url: string; deletedAt: number }[];
-  /** Adres -> treść. W pliku osobno i skompresowane (gzip + base64). */
+  /** Address -> content. Stored in a separate, compressed file (gzip + base64). */
   contents: Record<string, SyncContent>;
 }
 
 // ---------------------------------------------------------------------------
-// Wynik synchronizacji
+// The sync result
 // ---------------------------------------------------------------------------
 
 export interface SyncReport {
   at: number;
-  /** Pozycje, które przyszły z drugiej strony. */
+  /** Items that arrived from the other side. */
   added: number;
-  /** Pozycje zaktualizowane lokalnie (zdalna wersja była nowsza albo scalona). */
+  /** Items updated locally (the remote version was newer, or merged). */
   updated: number;
-  /** Pozycje skasowane lokalnie, bo po drugiej stronie zniknęły. */
+  /** Items deleted locally, because they disappeared on the other side. */
   deleted: number;
   contents: number;
   highlights: number;
-  /** Ile pozycji poszło na drugą stronę w tym ładunku. */
+  /** How many items went to the other side in this payload. */
   pushed: number;
-  /** Konflikty rozstrzygnięte po `updatedAt` (obie strony miały zmiany). */
+  /** Conflicts resolved by `updatedAt` (both sides had changes). */
   conflicts: number;
 }

@@ -1,8 +1,8 @@
 /**
- * Informacja zwrotna dla uzytkownika: badge na ikonie i powiadomienie przy
- * bledzie. Wszystko owiniete w `try/catch`, bo Firefox na Androidzie nie ma
- * ani badge'a, ani (czesciowo) powiadomien - brak tych API nie moze wywrocic
- * zapisu, ktory sie udal.
+ * Feedback for the user: a badge on the icon and a notification on failure.
+ * Everything is wrapped in `try/catch`, because Firefox for Android has neither
+ * a badge nor (fully) notifications - a missing API must not take down a save
+ * that succeeded.
  */
 import browser from 'webextension-polyfill';
 
@@ -17,7 +17,7 @@ async function setBadge(text: string, tabId: number | undefined): Promise<void> 
       await browser.action.setBadgeBackgroundColor({ ...target, color: BADGE_COLOR });
     }
   } catch {
-    // Brak badge'a (Android) - milczymy.
+    // No badge (Android) - stay quiet.
   }
 }
 
@@ -26,9 +26,9 @@ export async function clearBadge(tabId?: number): Promise<void> {
 }
 
 /**
- * "✓" na dwie sekundy. Czekanie jest czescia awaitowanej sciezki zapisu, wiec
- * service worker zyje przez ten czas i zdazy badge zgasic. Gdyby mimo to
- * zostal ubity, kolejny zapis zaczyna od `clearBadge()`.
+ * A "✓" for two seconds. The wait is part of the awaited save path, so the
+ * service worker stays alive long enough to clear the badge. If it gets killed
+ * anyway, the next save starts with `clearBadge()`.
  */
 export async function flashSaved(tabId?: number): Promise<void> {
   await setBadge('✓', tabId);
@@ -47,7 +47,7 @@ export async function notifyProblem(message: string): Promise<void> {
       message,
     });
   } catch {
-    // Bez powiadomien zostaje log - lepsze to niz wywrocenie sciezki zapisu.
+    // Without notifications a log remains - better than taking down the save path.
     console.warn('[savely]', message);
   }
 }

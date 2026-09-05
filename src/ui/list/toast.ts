@@ -1,9 +1,9 @@
 /**
- * Jeden toast na raz, z opcjonalna akcja (u nas: cofniecie usuniecia).
+ * One toast at a time, with an optional action (here: undoing a deletion).
  *
- * Toast nie jest tylko ozdoba: to on odmierza czas, po ktorym usuniecie staje
- * sie prawdziwe. Dlatego `onExpire` odpala sie zawsze, gdy toast zniknie bez
- * uzycia akcji - takze przy zamknieciu recznym.
+ * The toast is not just decoration: it is what counts down the time after which
+ * a deletion becomes real. That is why `onExpire` always fires when the toast
+ * disappears without the action being used - including a manual dismissal.
  */
 
 export interface ToastAction {
@@ -30,7 +30,7 @@ function hide(host: HTMLElement): void {
   host.replaceChildren();
 }
 
-/** Domyka poprzedni toast (odpalajac jego `onExpire`) i pokazuje nowy. */
+/** Closes the previous toast (firing its `onExpire`) and shows a new one. */
 export function showToast(host: HTMLElement, options: ToastOptions): void {
   flushToast(host);
 
@@ -63,7 +63,7 @@ export function showToast(host: HTMLElement, options: ToastOptions): void {
   }, options.durationMs ?? DEFAULT_MS) as unknown as number;
 }
 
-/** Natychmiast domyka toast tak, jakby czas minal (np. przy zamykaniu okna). */
+/** Closes the toast immediately as if the time had run out (on window close, say). */
 export function flushToast(host: HTMLElement): void {
   const pending = expire;
   expire = undefined;

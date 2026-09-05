@@ -1,15 +1,16 @@
 /**
- * Indeks wyszukiwania pelnotekstowego (FlexSearch).
+ * The full-text search index (FlexSearch).
  *
- * Indeks jest **pochodna bazy** (CLAUDE.md 4.4): budowany przy starcie UI
- * z IndexedDB i aktualizowany przyrostowo. Jego utrata to przebudowa,
- * nigdy utrata danych.
+ * The index is **derived from the database** (CLAUDE.md 4.4): built at UI
+ * startup from IndexedDB and updated incrementally. Losing it means a rebuild,
+ * never a loss of data.
  *
- * Modul nie dotyka ani bazy, ani DOM-u - dostaje pola, oddaje identyfikatory.
+ * The module touches neither the database nor the DOM - it takes fields and
+ * returns identifiers.
  */
-// Build ESM flexsearcha wystawia tylko domyslny eksport (obiekt z klasami),
-// mimo ze @types deklaruje eksporty nazwane - stad import wartosci osobno
-// od importu typu.
+// The ESM build of flexsearch exposes only a default export (an object of
+// classes), even though @types declares named exports - hence the value import
+// separate from the type import.
 import FlexSearch from 'flexsearch';
 import type { Document as FlexDocument } from 'flexsearch';
 
@@ -20,17 +21,17 @@ interface SearchDoc {
   text: string;
 }
 
-/** Ile znakow tresci trafia do indeksu. Dalej to juz same powtorzenia. */
+/** How many characters of content reach the index. Beyond that it is repetition. */
 const MAX_INDEXED_CHARS = 30_000;
 
-/** Waga pola w wyniku - trafienie w tytul znaczy wiecej niz w srodku tekstu. */
+/** A field's weight in the score - a hit in the title counts more than one mid-text. */
 const FIELD_WEIGHT: Record<string, number> = { title: 4, excerpt: 2, text: 1 };
 
 /**
- * Tokenizer swiadomy polskich znakow: FlexSearch-owy `simple` sprowadza
- * tylko zachodnie diakrytyki, wiec "wyborczą" nie trafiloby w "wyborcza".
- * NFD rozklada ogonki i kreski na znaki laczace, ktore tu odsiewamy;
- * "ł" nie ma rozkladu, stad osobna podmiana.
+ * A diacritics-aware tokenizer: FlexSearch's `simple` folds only Western
+ * diacritics, so "wyborcz\u0105" would not match "wyborcza". NFD decomposes
+ * accents into combining marks, which we strip here; "\u0142" has no
+ * decomposition, hence the separate replacement.
  */
 export function tokenize(value: string): string[] {
   return value
@@ -50,9 +51,9 @@ export interface IndexableItem {
 
 export class SearchIndex {
   /**
-   * FlexSearch nie pozwala dopisac pojedynczego pola do istniejacego
-   * dokumentu, wiec trzymamy obok komplet pol i podmieniamy caly dokument,
-   * gdy dojdzie tresc.
+   * FlexSearch does not allow appending a single field to an existing
+   * document, so we keep the complete set of fields alongside and swap the
+   * whole document once the content arrives.
    */
   readonly #docs = new Map<string, SearchDoc>();
 
@@ -70,7 +71,7 @@ export class SearchIndex {
     return this.#docs.size;
   }
 
-  /** Metadane pozycji. Tresc dochodzi pozniej przez `setText`. */
+  /** An item's metadata. The content arrives later through `setText`. */
   addItem(item: IndexableItem): void {
     const existing = this.#docs.get(item.id);
     this.#put({
@@ -98,8 +99,9 @@ export class SearchIndex {
   }
 
   /**
-   * Identyfikatory posortowane malejaco po trafnosci: suma wag pol, w ktorych
-   * zapytanie trafilo, z premia za wczesniejsza pozycje w wynikach pola.
+   * Identifiers sorted by descending relevance: the sum of the weights of the
+   * fields the query hit, with a bonus for an earlier position within a
+   * field's results.
    */
   search(query: string, limit = 200): string[] {
     if (query.trim() === '') return [];

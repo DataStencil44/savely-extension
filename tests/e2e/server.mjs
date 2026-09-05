@@ -1,10 +1,10 @@
 /**
- * Serwer fixture'ow dla testow e2e.
+ * The fixture server for the e2e tests.
  *
- * Zapis idzie sciezka A (content script w karcie), a ta wymaga prawdziwego
- * adresu http - `file://` w Chrome jest poza zasiegiem rozszerzenia bez
- * osobnej zgody. Stad kilkanascie linii statycznego serwera zamiast
- * zaleznosci.
+ * Saving goes down path A (a content script in the tab), and that needs a real
+ * http address - `file://` in Chrome is out of the extension's reach without a
+ * separate permission. Hence a dozen lines of static server instead of a
+ * dependency.
  */
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -21,12 +21,12 @@ const TYPES = {
 };
 
 const server = createServer((request, response) => {
-  // Bez `..` - serwer widzi wylacznie katalog fixture'ow.
+  // No `..` - the server sees the fixtures directory and nothing else.
   const path = normalize(new URL(request.url ?? '/', 'http://localhost').pathname).replace(
     /^(\.\.[/\\])+/,
     '',
   );
-  const file = join(ROOT, path === '/' ? 'artykul.html' : path);
+  const file = join(ROOT, path === '/' ? 'article.html' : path);
 
   readFile(file).then(
     (body) => {
@@ -35,11 +35,11 @@ const server = createServer((request, response) => {
     },
     () => {
       response.writeHead(404, { 'content-type': 'text/plain' });
-      response.end('nie ma takiego pliku');
+      response.end('no such file');
     },
   );
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[savely-e2e] fixtures na http://127.0.0.1:${PORT}/`);
+  console.log(`[savely-e2e] fixtures at http://127.0.0.1:${PORT}/`);
 });

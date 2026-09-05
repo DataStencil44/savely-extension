@@ -1,35 +1,35 @@
 <!doctype html>
-<html lang="pl">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Savely — dane</title>
+    <title>Savely — data</title>
     <link rel="stylesheet" href="./options.css" />
   </head>
   <body>
     <header class="topbar">
       <h1 class="brand">Savely</h1>
-      <button id="open-list" class="button button--ghost" type="button">Lista</button>
+      <button id="open-list" class="button button--ghost" type="button">List</button>
     </header>
 
     <main class="page">
       <section class="card">
-        <h2 class="card__title">Twoje dane</h2>
+        <h2 class="card__title">Your data</h2>
         <dl id="stats" class="stats"></dl>
-        <p id="storage" class="muted">Sprawdzam zajęte miejsce…</p>
+        <p id="storage" class="muted">Checking storage usage…</p>
       </section>
 
       <section class="card">
-        <h2 class="card__title">Eksport</h2>
+        <h2 class="card__title">Export</h2>
         <p class="muted">
-          Pełna kopia to wszystko: pozycje, treści artykułów, podświetlenia i wersja schematu.
-          Zakładki HTML to sam adres, tytuł i tagi — w formacie, który zaimportuje każda
-          przeglądarka.
+          A full backup holds everything: items, article content, highlights and the schema
+          version. HTML bookmarks are just the address, title and tags — in a format every
+          browser can import.
         </p>
         <div class="row">
-          <button id="export-json" class="button" type="button">Pełna kopia (JSON)</button>
+          <button id="export-json" class="button" type="button">Full backup (JSON)</button>
           <button id="export-html" class="button button--ghost" type="button">
-            Zakładki (HTML)
+            Bookmarks (HTML)
           </button>
         </div>
       </section>
@@ -37,12 +37,12 @@
       <section class="card">
         <h2 class="card__title">Import</h2>
         <p class="muted">
-          Kopia Savely (<code>.json</code>) albo eksport z Pocketa (<code>.csv</code>).
-          Pozycje o tym samym adresie są scalane, nie dublowane — import niczego nie kasuje
-          i nie nadpisuje treści, którą już masz.
+          A Savely backup (<code>.json</code>) or a Pocket export (<code>.csv</code>).
+          Items with the same address are merged, not duplicated — an import never deletes
+          anything and never overwrites content you already have.
         </p>
         <label class="file">
-          <span class="file__label">Wybierz plik</span>
+          <span class="file__label">Choose a file</span>
           <input
             id="import-file"
             class="file__input"
@@ -54,15 +54,15 @@
       </section>
 
       <section class="card">
-        <h2 class="card__title">Synchronizacja między urządzeniami</h2>
+        <h2 class="card__title">Sync across devices</h2>
         <p class="muted">
-          Opcjonalna i wyłączona domyślnie. Savely nie ma serwera — dane wędrują przez miejsce,
-          które sam wskazujesz, i tylko tam.
+          Optional and off by default. Savely has no server — your data travels through a place
+          you pick yourself, and nowhere else.
         </p>
 
         <div class="row">
           <label class="field">
-            <span class="field__label">Dostawca</span>
+            <span class="field__label">Provider</span>
             <select id="sync-provider" class="field__input"></select>
           </label>
         </div>
@@ -75,53 +75,53 @@
             <input id="sync-secret" class="field__input" type="password" autocomplete="off" spellcheck="false" />
           </label>
           <p id="sync-help" class="muted"></p>
-          <button id="sync-authorize" class="button" type="button">Połącz</button>
+          <button id="sync-authorize" class="button" type="button">Connect</button>
         </div>
 
         <div id="sync-connected" class="connect" hidden>
           <p id="sync-target" class="muted"></p>
           <p id="sync-status" class="muted"></p>
           <div class="row">
-            <button id="sync-now" class="button" type="button">Synchronizuj teraz</button>
-            <button id="sync-disconnect" class="button button--ghost" type="button">Rozłącz</button>
+            <button id="sync-now" class="button" type="button">Sync now</button>
+            <button id="sync-disconnect" class="button button--ghost" type="button">Disconnect</button>
           </div>
           <label class="settings__check">
             <input id="sync-auto" type="checkbox" />
-            Synchronizuj automatycznie co 30 minut
+            Sync automatically every 30 minutes
           </label>
         </div>
       </section>
 
       <section class="card">
-        <h2 class="card__title">Kopie automatyczne</h2>
+        <h2 class="card__title">Automatic backups</h2>
         <p class="muted">
-          Raz dziennie zapisujemy w bazie metadane pozycji — tagi, ulubione, stan archiwum,
-          daty. Bez treści artykułów, żeby kopie nie puchły. Trzymamy trzy ostatnie.
+          Once a day we store item metadata in the database — tags, favorites, archive state,
+          dates. Without article content, so backups stay small. We keep the last three.
         </p>
         <ul id="snapshots" class="snapshots"></ul>
         <button id="snapshot-now" class="button button--ghost" type="button">
-          Zrób kopię teraz
+          Back up now
         </button>
       </section>
 
       <section class="card card--danger">
-        <h2 class="card__title">Usuń wszystkie dane</h2>
+        <h2 class="card__title">Delete all data</h2>
         <p class="muted">
-          Kasuje pozycje, treści, podświetlenia i kopie automatyczne. Tego nie da się cofnąć —
-          zrób najpierw eksport.
+          Erases items, content, highlights and automatic backups. This cannot be undone —
+          export first.
         </p>
-        <button id="wipe" class="button button--danger" type="button">Usuń wszystkie dane</button>
+        <button id="wipe" class="button button--danger" type="button">Delete all data</button>
       </section>
     </main>
 
     <div id="toast" class="toast" role="status" hidden></div>
 
     <dialog id="confirm-dialog" class="dialog">
-      <h2 id="confirm-title" class="dialog__title">Na pewno?</h2>
+      <h2 id="confirm-title" class="dialog__title">Are you sure?</h2>
       <p id="confirm-text" class="muted"></p>
       <div class="row row--end">
-        <button id="confirm-cancel" class="button button--ghost" type="button">Anuluj</button>
-        <button id="confirm-ok" class="button button--danger" type="button">Potwierdzam</button>
+        <button id="confirm-cancel" class="button button--ghost" type="button">Cancel</button>
+        <button id="confirm-ok" class="button button--danger" type="button">Confirm</button>
       </div>
     </dialog>
 

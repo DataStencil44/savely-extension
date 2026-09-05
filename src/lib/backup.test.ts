@@ -1,9 +1,10 @@
 /**
- * Testy formatów przenoszenia danych. Bez bazy i bez przeglądarki - moduł
- * `backup.ts` jest czysty, a to on decyduje, co w ogóle dojdzie do zapisu.
+ * Tests for the data interchange formats. No database and no browser - the
+ * `backup.ts` module is pure, and it is what decides what reaches the write at
+ * all.
  *
- * Nacisk pada na pliki uszkodzone: import ma raportować, a nie wybuchać ani
- * po cichu wpuszczać śmieci do bazy.
+ * The emphasis is on damaged files: an import should report, not explode and
+ * not quietly let junk into the database.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -29,7 +30,7 @@ function item(overrides: Partial<SavedItem> & Pick<SavedItem, 'url'>): SavedItem
   return {
     id: `id-${overrides.url}`,
     resolvedUrl: overrides.url,
-    title: 'Tytuł',
+    title: 'A title',
     excerpt: '',
     byline: null,
     siteName: null,
@@ -50,30 +51,30 @@ function item(overrides: Partial<SavedItem> & Pick<SavedItem, 'url'>): SavedItem
   };
 }
 
-describe('nazwy plików', () => {
-  it('niosą datę dnia, nie znacznik czasu', () => {
+describe('file names', () => {
+  it('carry the calendar day, not a timestamp', () => {
     const when = new Date(2026, 0, 5, 23, 30).getTime();
     expect(backupFileName(when)).toBe('savely-backup-2026-01-05.json');
     expect(bookmarksFileName(when)).toBe('savely-bookmarks-2026-01-05.html');
   });
 });
 
-describe('eksport i ponowny import', () => {
-  it('przechodzi w obie strony bez strat', () => {
+describe('export and re-import', () => {
+  it('round-trips without losses', () => {
     const dump = {
       items: [item({ url: 'https://a.example/1', tags: ['rust', 'web'], favorite: true })],
       contents: [
-        { itemId: 'id-https://a.example/1', html: '<p>treść</p>', text: 'treść', updatedAt: NOW },
+        { itemId: 'id-https://a.example/1', html: '<p>content</p>', text: 'content', updatedAt: NOW },
       ],
       highlights: [
         {
           id: 'h1',
           itemId: 'id-https://a.example/1',
-          text: 'treść',
-          note: 'notatka',
+          text: 'content',
+          note: 'a note',
           createdAt: NOW,
           start: 0,
-          end: 5,
+          end: 7,
           prefix: '',
           suffix: '',
         },
@@ -92,14 +93,14 @@ describe('eksport i ponowny import', () => {
       favorite: true,
     });
     expect(plan.dump.contents).toHaveLength(1);
-    expect(plan.dump.highlights[0]?.note).toBe('notatka');
+    expect(plan.dump.highlights[0]?.note).toBe('a note');
   });
 });
 
-describe('zakładki Netscape', () => {
-  it('mają nagłówek formatu, sekundy w ADD_DATE i tagi', () => {
+describe('Netscape bookmarks', () => {
+  it('carry the format header, seconds in ADD_DATE and the tags', () => {
     const html = buildBookmarksHtml(
-      [item({ url: 'https://a.example/1', title: 'Tytuł', tags: ['rust'] })],
+      [item({ url: 'https://a.example/1', title: 'A title', tags: ['rust'] })],
       NOW,
     );
 
@@ -107,172 +108,172 @@ describe('zakładki Netscape', () => {
     expect(html).toContain('<DL><p>');
     expect(html).toContain(`ADD_DATE="${String(Math.floor(NOW / 1000))}"`);
     expect(html).toContain('TAGS="rust"');
-    expect(html).toContain('>Tytuł</A>');
+    expect(html).toContain('>A title</A>');
   });
 
-  it('escape\'uje adres i tytuł', () => {
+  it('escapes the address and the title', () => {
     const html = buildBookmarksHtml(
-      [item({ url: 'https://a.example/?q=1&x=2', title: 'Kot <b>i</b> "pies"' })],
+      [item({ url: 'https://a.example/?q=1&x=2', title: 'Cat <b>and</b> "dog"' })],
       NOW,
     );
 
     expect(html).toContain('HREF="https://a.example/?q=1&amp;x=2"');
-    expect(html).toContain('Kot &lt;b&gt;i&lt;/b&gt; &quot;pies&quot;');
-    expect(html).not.toContain('<b>i</b>');
+    expect(html).toContain('Cat &lt;b&gt;and&lt;/b&gt; &quot;dog&quot;');
+    expect(html).not.toContain('<b>and</b>');
   });
 
-  it('bez tytułu bierze domenę', () => {
+  it('falls back to the hostname when there is no title', () => {
     const html = buildBookmarksHtml([item({ url: 'https://a.example/1', title: '' })], NOW);
     expect(html).toContain('>a.example</A>');
   });
 });
 
-describe('import JSON: pliki nie do przyjęcia', () => {
-  it('nie-JSON', () => {
-    expect(() => parseBackup('to nie jest json', NOW)).toThrow(ImportError);
+describe('JSON import: unacceptable files', () => {
+  it('not JSON', () => {
+    expect(() => parseBackup('this is not json', NOW)).toThrow(ImportError);
   });
 
-  it('obcy JSON bez naszego pola format', () => {
-    expect(() => parseBackup('{"items":[]}', NOW)).toThrow(/kopia Savely/);
+  it('a foreign JSON without our format field', () => {
+    expect(() => parseBackup('{"items":[]}', NOW)).toThrow(/Savely backup/);
   });
 
-  it('nowsza wersja formatu', () => {
+  it('a newer format version', () => {
     const file = JSON.stringify({
       format: 'savely-backup',
       formatVersion: BACKUP_FORMAT_VERSION + 1,
       items: [],
     });
-    expect(() => parseBackup(file, NOW)).toThrow(/nowszym formacie/);
+    expect(() => parseBackup(file, NOW)).toThrow(/newer format/);
   });
 
-  it('pole items, które nie jest listą', () => {
-    const file = JSON.stringify({ format: 'savely-backup', formatVersion: 1, items: 'sporo' });
-    expect(() => parseBackup(file, NOW)).toThrow(/nie jest listą/);
+  it('an items field that is not a list', () => {
+    const file = JSON.stringify({ format: 'savely-backup', formatVersion: 1, items: 'plenty' });
+    expect(() => parseBackup(file, NOW)).toThrow(/is not a list/);
   });
 });
 
-describe('import JSON: pojedyncze uszkodzone rekordy', () => {
+describe('JSON import: individual damaged records', () => {
   const file = JSON.stringify({
     format: 'savely-backup',
     formatVersion: 1,
     items: [
-      { url: 'https://a.example/1', title: 'Dobra' },
-      { title: 'Bez adresu' },
-      'wcale nie obiekt',
-      { url: 'https://a.example/1?utm_source=x', title: 'Ten sam adres po normalizacji' },
-      { url: 'https://b.example/2', savedAt: 'wczoraj', tags: ['x', 7], readingProgress: 42 },
+      { url: 'https://a.example/1', title: 'A good one' },
+      { title: 'No address' },
+      'not an object at all',
+      { url: 'https://a.example/1?utm_source=x', title: 'The same address after normalization' },
+      { url: 'https://b.example/2', savedAt: 'yesterday', tags: ['x', 7], readingProgress: 42 },
     ],
     contents: [
-      { itemId: 'nie-ma-takiej', html: '<p>sierota</p>' },
-      { itemId: 'inna', text: 'bez html-a' },
+      { itemId: 'no-such-item', html: '<p>an orphan</p>' },
+      { itemId: 'another', text: 'without html' },
     ],
-    highlights: [{ itemId: 'nie-ma-takiej', text: 'sierota' }],
+    highlights: [{ itemId: 'no-such-item', text: 'an orphan' }],
   });
 
-  it('przepuszcza zdrowe, resztę raportuje z miejscem i powodem', () => {
+  it('lets the healthy ones through and reports the rest with a place and a reason', () => {
     const plan = parseBackup(file, NOW);
 
     expect(plan.dump.items).toHaveLength(2);
     expect(plan.total).toBe(8);
     expect(plan.problems).toEqual([
-      { where: 'pozycja 2', reason: 'brak adresu' },
-      { where: 'pozycja 3', reason: 'pozycja nie jest obiektem' },
-      { where: 'pozycja 4', reason: 'duplikat adresu w pliku (już jako pozycja 1)' },
-      { where: 'treść 1', reason: 'treść bez pozycji w tym pliku' },
-      { where: 'treść 2', reason: 'treść bez pozycji w tym pliku' },
-      { where: 'zaznaczenie 1', reason: 'zaznaczenie bez pozycji w tym pliku' },
+      { where: 'item 2', reason: 'no address' },
+      { where: 'item 3', reason: 'the item is not an object' },
+      { where: 'item 4', reason: 'duplicate address in the file (already as item 1)' },
+      { where: 'content 1', reason: 'content with no item in this file' },
+      { where: 'content 2', reason: 'content with no item in this file' },
+      { where: 'highlight 1', reason: 'a highlight with no item in this file' },
     ]);
   });
 
-  it('naprawia pola, które da się naprawić', () => {
+  it('repairs the fields that can be repaired', () => {
     const broken = parseBackup(file, NOW).dump.items[1];
 
     expect(broken?.savedAt).toBe(NOW);
     expect(broken?.tags).toEqual(['x']);
-    // Postęp poza zakresem zepsułby pasek w czytniku.
+    // Progress out of range would break the reader's bar.
     expect(broken?.readingProgress).toBe(1);
     expect(broken?.status).toBe('pending');
   });
 });
 
 describe('parseCsv', () => {
-  it('radzi sobie z cudzysłowami, przecinkami i łamaniem linii w polu', () => {
-    const rows = parseCsv('a,b\r\n"prze,cinek","cudzysłów ""w środku"""\n"dwie\nlinie",x\n');
+  it('copes with quotes, commas and line breaks inside a field', () => {
+    const rows = parseCsv('a,b\r\n"com,ma","a quote ""inside"""\n"two\nlines",x\n');
 
     expect(rows).toEqual([
       ['a', 'b'],
-      ['prze,cinek', 'cudzysłów "w środku"'],
-      ['dwie\nlinie', 'x'],
+      ['com,ma', 'a quote "inside"'],
+      ['two\nlines', 'x'],
     ]);
   });
 });
 
-describe('import CSV z Pocketa', () => {
+describe('Pocket CSV import', () => {
   const csv = [
     'title,url,time_added,tags,status',
-    '"Rdza, czyli Rust",https://a.example/rust,1700000000,rust|web,unread',
-    'Zarchiwizowany,https://b.example/x,1700000100,,archive',
-    'Bez adresu,,1700000200,,unread',
-    'Duplikat,https://a.example/rust?utm_source=nl,1700000300,,unread',
+    '"Rust, that is",https://a.example/rust,1700000000,rust|web,unread',
+    'Archived,https://b.example/x,1700000100,,archive',
+    'No address,,1700000200,,unread',
+    'Duplicate,https://a.example/rust?utm_source=nl,1700000300,,unread',
     '',
   ].join('\n');
 
-  it('mapuje kolumny po nagłówku i przelicza czas na milisekundy', () => {
+  it('maps the columns by header and converts the time to milliseconds', () => {
     const plan = parsePocketCsv(csv, NOW);
 
     expect(plan.source).toBe('pocket-csv');
     expect(plan.dump.items).toHaveLength(2);
     expect(plan.dump.items[0]).toMatchObject({
-      title: 'Rdza, czyli Rust',
+      title: 'Rust, that is',
       url: 'https://a.example/rust',
       savedAt: 1_700_000_000_000,
       tags: ['rust', 'web'],
       archived: false,
-      // Pocket nie oddaje treści - dociągnie ją dopiero zapis strony.
+      // Pocket returns no content - only saving the page will fetch it.
       status: 'pending',
     });
     expect(plan.dump.items[1]).toMatchObject({ archived: true, archivedKey: 1 });
   });
 
-  it('raportuje wiersze bez adresu i duplikaty, numerując jak arkusz', () => {
+  it('reports rows without an address and duplicates, numbered like a spreadsheet', () => {
     expect(parsePocketCsv(csv, NOW).problems).toEqual([
-      { where: 'wiersz 4', reason: 'brak adresu' },
-      { where: 'wiersz 5', reason: 'duplikat adresu w pliku (już jako wiersz 2)' },
+      { where: 'row 4', reason: 'no address' },
+      { where: 'row 5', reason: 'duplicate address in the file (already as row 2)' },
     ]);
   });
 
-  it('odmawia, gdy nie ma kolumny url', () => {
-    expect(() => parsePocketCsv('tytul,adres\na,b', NOW)).toThrow(/kolumny "url"/);
+  it('refuses when there is no url column', () => {
+    expect(() => parsePocketCsv('title,address\na,b', NOW)).toThrow(/no "url" column/);
     expect(() => parsePocketCsv('', NOW)).toThrow(ImportError);
   });
 });
 
 describe('parseImportFile', () => {
-  it('wybiera parser po rozszerzeniu, a bez niego po zawartości', () => {
+  it('picks the parser by extension, and without one by content', () => {
     const json = JSON.stringify({ format: 'savely-backup', formatVersion: 1, items: [] });
     const csv = 'title,url\nA,https://a.example/1';
 
-    expect(parseImportFile('kopia.json', json, NOW).source).toBe('json');
+    expect(parseImportFile('backup.json', json, NOW).source).toBe('json');
     expect(parseImportFile('pocket.csv', csv, NOW).source).toBe('pocket-csv');
-    expect(parseImportFile('bez-rozszerzenia', json, NOW).source).toBe('json');
-    expect(parseImportFile('bez-rozszerzenia', csv, NOW).source).toBe('pocket-csv');
+    expect(parseImportFile('no-extension', json, NOW).source).toBe('json');
+    expect(parseImportFile('no-extension', csv, NOW).source).toBe('pocket-csv');
   });
 });
 
 describe('summarizeProblems', () => {
-  it('grupuje po powodzie, najczęstsze na górze, z przykładami', () => {
+  it('groups by reason, the most frequent on top, with examples', () => {
     const groups = summarizeProblems([
-      { where: 'wiersz 2', reason: 'brak adresu' },
-      { where: 'wiersz 3', reason: 'duplikat' },
-      { where: 'wiersz 4', reason: 'brak adresu' },
-      { where: 'wiersz 5', reason: 'brak adresu' },
-      { where: 'wiersz 6', reason: 'brak adresu' },
+      { where: 'row 2', reason: 'no address' },
+      { where: 'row 3', reason: 'a duplicate' },
+      { where: 'row 4', reason: 'no address' },
+      { where: 'row 5', reason: 'no address' },
+      { where: 'row 6', reason: 'no address' },
     ]);
 
     expect(groups[0]).toEqual({
-      reason: 'brak adresu',
+      reason: 'no address',
       count: 4,
-      examples: ['wiersz 2', 'wiersz 4', 'wiersz 5'],
+      examples: ['row 2', 'row 4', 'row 5'],
     });
     expect(groups[1]?.count).toBe(1);
   });
