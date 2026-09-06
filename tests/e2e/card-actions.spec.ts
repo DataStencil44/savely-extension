@@ -1,5 +1,5 @@
 /**
- * The card's action buttons under the keyboard.
+ * The card's action buttons: what they do, and when it becomes real.
  *
  * The list listens for its shortcuts on `document`, so a key pressed while a
  * button has focus reaches both. Enter is the collision that matters: it is
@@ -45,4 +45,32 @@ test('Enter on an action button runs that action, not the reader', async ({
   await expect(list.locator('.card__actions [aria-pressed="true"][aria-label*="favorites"]')).toHaveCount(1);
   // ...and nothing else opened on top of it.
   expect(context.pages()).toHaveLength(pagesBefore);
+});
+
+test('a deletion survives the popup closing right after it', async ({ context, extensionId }) => {
+  const POPUP = `chrome-extension://${extensionId}/ui/list/list.html`;
+
+  const article = await context.newPage();
+  await article.goto(`${ORIGIN}/article.html`);
+
+  const popup = await context.newPage();
+  await popup.goto(POPUP);
+  await article.bringToFront();
+  const saved = await popup.evaluate((type) => chrome.runtime.sendMessage({ type }), SAVE_ACTIVE_TAB);
+  expect(saved, saved.message).toMatchObject({ ok: true });
+
+  await popup.bringToFront();
+  await popup.reload();
+  await expect(popup.locator('.card')).toHaveCount(1);
+
+  // Delete, and then the popup is gone - well inside the five seconds the
+  // toast offers. Nothing may be left waiting on a page that no longer exists.
+  await popup.locator('.card__actions [aria-label^="Delete"]').click();
+  await expect(popup.locator('.card')).toHaveCount(0);
+  await popup.goto('about:blank');
+
+  const reopened = await context.newPage();
+  await reopened.goto(POPUP);
+  await expect(reopened.locator('#empty')).toBeVisible();
+  await expect(reopened.locator('.card')).toHaveCount(0);
 });

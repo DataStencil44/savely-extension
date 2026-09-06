@@ -29,9 +29,11 @@ import {
   listHighlights,
   listItems,
   listSnapshots,
+  listTombstones,
   normalizeTags,
   normalizeUrl,
   openDb,
+  restoreItem,
   restoreSnapshot,
   saveItem,
   setContent,
@@ -318,7 +320,12 @@ describe('deleteItem', () => {
     await setContent(other.id, { html: '<p>other</p>', text: 'other' });
     await addHighlight({ itemId: other.id, text: 'alien', start: 0, end: 5 });
 
-    await expect(deleteItem(item.id)).resolves.toBe(true);
+    // What comes back is the record as it was - the list holds it for Undo.
+    const removed = await deleteItem(item.id);
+    expect(removed?.item.id).toBe(item.id);
+    expect(removed?.content?.text).toBe('content');
+    // Order follows the index, not the order they were made in.
+    expect(removed?.highlights.map((highlight) => highlight.text).sort()).toEqual(['one', 'two']);
 
     await expect(getItem(item.id)).resolves.toBeUndefined();
     await expect(getContent(item.id)).resolves.toBeUndefined();
@@ -329,8 +336,33 @@ describe('deleteItem', () => {
     await expect(listHighlights(other.id)).resolves.toHaveLength(1);
   });
 
-  it('returns false when there was nothing to delete', async () => {
-    await expect(deleteItem('no-such-id')).resolves.toBe(false);
+  it('answers with null when there was nothing to delete', async () => {
+    await expect(deleteItem('no-such-id')).resolves.toBeNull();
+  });
+});
+
+describe('restoreItem', () => {
+  it('puts back everything the deletion took, grave included', async () => {
+    const item = await saveItem({ url: 'https://example.com/undo', title: 'Undo me' });
+    await updateItem(item.id, { tags: ['rail'], favorite: true });
+    await setContent(item.id, { html: '<p>content</p>', text: 'content' });
+    await addHighlight({ itemId: item.id, text: 'one', start: 0, end: 3 });
+
+    const removed = await deleteItem(item.id);
+    if (removed === null) throw new Error('nothing was deleted');
+    // The deletion left a grave behind; sync would otherwise carry it out
+    // again on every device after the undo.
+    await expect(listTombstones()).resolves.toHaveLength(1);
+
+    await restoreItem(removed);
+
+    const back = await getItem(item.id);
+    expect(back?.title).toBe('Undo me');
+    expect(back?.tags).toEqual(['rail']);
+    expect(back?.favorite).toBe(true);
+    await expect(getContent(item.id)).resolves.toMatchObject({ text: 'content' });
+    await expect(listHighlights(item.id)).resolves.toHaveLength(1);
+    await expect(listTombstones()).resolves.toEqual([]);
   });
 });
 

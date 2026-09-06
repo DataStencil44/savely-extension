@@ -16,7 +16,9 @@ import {
   listContentIds,
   listFavicons,
   listItems,
+  restoreItem,
   updateItem,
+  type RemovedItem,
   type SavedItem,
 } from '@/lib/db';
 import { faviconKey } from '@/lib/favicon';
@@ -26,7 +28,7 @@ import { SAVE_ACTIVE_TAB } from '@/types/messages';
 
 import { createCard, type CardCallbacks } from './cards';
 import { closeTagEditor, openTagEditor } from './tags';
-import { flushToast, showToast } from './toast';
+import { showToast } from './toast';
 import { computeWindow, scrollTopFor } from './window';
 
 type TabId = 'inbox' | 'favorite' | 'archive';
@@ -43,7 +45,8 @@ const MODE: 'popup' | 'full' =
 
 interface PendingDelete {
   item: SavedItem;
-  timer: number;
+  /** What the database gave back when it removed the item - what Undo puts in again. */
+  removed: Promise<RemovedItem | null>;
 }
 
 const state = {
@@ -369,9 +372,18 @@ const callbacks: CardCallbacks = {
 };
 
 /**
- * Deletion is immediate on screen but only lands in the database after 5 s.
- * Until then the item lives in `state.pending` and can be undone without
- * touching IndexedDB.
+ * The item leaves the screen and the database at once; the toast offers five
+ * seconds to put it back.
+ *
+ * The other way round - the item held in memory and written off only when the
+ * toast expires - is what the popup cannot support. A popup is usually gone
+ * within a second of the click, and its `pagehide` handler cannot finish an
+ * IndexedDB transaction on the way out: the deletion the user watched happen
+ * was simply back in the list the next time they opened it.
+ *
+ * So the database is told immediately and `deleteItem` answers with the record
+ * it removed, which is what Undo puts back - content, highlights, grave and
+ * all.
  */
 function removeWithUndo(item: SavedItem): void {
   if (el.toast === null) return;
@@ -380,32 +392,43 @@ function removeWithUndo(item: SavedItem): void {
   index.remove(item.id);
   recompute();
 
-  const timer = setTimeout(() => {
-    state.pending.delete(item.id);
-  }, UNDO_MS) as unknown as number;
-  state.pending.set(item.id, { item, timer });
+  const removed = deleteItem(item.id).catch((error: unknown) => {
+    // Nothing awaits this until Undo, and an unhandled rejection would take the
+    // whole handler down with it.
+    console.error('[savely] the deletion did not reach the database:', error);
+    return null;
+  });
+  state.pending.set(item.id, { item, removed });
 
   showToast(el.toast, {
-    message: `Deleted \u201c${item.title === '' ? item.url : item.title}\u201d`,
+    message: `Deleted “${item.title === '' ? item.url : item.title}”`,
     durationMs: UNDO_MS,
     action: {
       label: 'Undo',
       run: () => {
-        const pending = state.pending.get(item.id);
-        if (pending === undefined) return;
-        clearTimeout(pending.timer);
-        state.pending.delete(item.id);
-
-        state.items = [...state.items, pending.item].sort((a, b) => b.savedAt - a.savedAt);
-        index.addItem({ id: item.id, title: item.title, excerpt: item.excerpt });
-        recompute();
+        void undoRemoval(item.id);
       },
     },
     onExpire: () => {
+      // Nothing to carry out any more - the deletion is long done.
       state.pending.delete(item.id);
-      void deleteItem(item.id);
     },
   });
+}
+
+/** Puts the item back where it was, in the database first and then on screen. */
+async function undoRemoval(id: string): Promise<void> {
+  const pending = state.pending.get(id);
+  if (pending === undefined) return;
+  state.pending.delete(id);
+
+  const removed = await pending.removed;
+  if (removed !== null) await restoreItem(removed);
+
+  const { item } = pending;
+  state.items = [...state.items, item].sort((a, b) => b.savedAt - a.savedAt);
+  index.addItem({ id: item.id, title: item.title, excerpt: item.excerpt });
+  recompute();
 }
 
 // ---------------------------------------------------------------------------
@@ -645,12 +668,6 @@ function wireEvents(): void {
 
   document.addEventListener('keydown', onKeyDown);
 
-  // Closing the window must not leave a deletion half-done: we flush the toast,
-  // which fires the real `deleteItem`. The popup can disappear faster than the
-  // transaction finishes - in that case the item simply stays in the database.
-  window.addEventListener('pagehide', () => {
-    if (el.toast !== null) flushToast(el.toast);
-  });
 }
 
 async function main(): Promise<void> {

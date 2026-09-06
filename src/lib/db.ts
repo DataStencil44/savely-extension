@@ -763,28 +763,72 @@ export async function updateItem(id: string, patch: ItemPatch): Promise<SavedIte
  * transaction, so no orphaned records are left in `contents`/`highlights`.
  * Returns `false` when the item did not exist.
  */
-export async function deleteItem(id: string): Promise<boolean> {
+/**
+ * Everything a deletion took out of the database - enough to put it back.
+ *
+ * The list hands the user five seconds to undo, and it can only offer that
+ * because the deletion answers with what it removed. `content` is missing for
+ * an item saved as an entry only.
+ */
+export interface RemovedItem {
+  item: SavedItem;
+  content: ItemContent | undefined;
+  highlights: Highlight[];
+}
+
+/**
+ * Deletes an item with everything hanging off it, and answers with the record
+ * as it was - `null` if there was no such item.
+ */
+export async function deleteItem(id: string): Promise<RemovedItem | null> {
   const db = await openDb();
   const tx = db.transaction(['items', 'contents', 'highlights', 'tombstones'], 'readwrite');
   const existing = await tx.objectStore('items').get(id);
 
-  if (existing !== undefined) {
-    await tx.objectStore('items').delete(id);
-    await tx.objectStore('contents').delete(id);
-    const highlights = tx.objectStore('highlights').index('itemId');
-    let cursor = await highlights.openCursor(IDBKeyRange.only(id));
-    while (cursor !== null) {
-      await cursor.delete();
-      cursor = await cursor.continue();
-    }
-    // The tombstone goes in the same transaction as the deletion - otherwise
-    // an interruption between them would leave a deletion sync never hears
-    // about, and the item would come back from another device.
-    await tx.objectStore('tombstones').put({ url: existing.url, deletedAt: Date.now() });
+  if (existing === undefined) {
+    await tx.done;
+    return null;
   }
 
+  const content = await tx.objectStore('contents').get(id);
+  const removedHighlights: Highlight[] = [];
+
+  await tx.objectStore('items').delete(id);
+  await tx.objectStore('contents').delete(id);
+  const highlights = tx.objectStore('highlights').index('itemId');
+  let cursor = await highlights.openCursor(IDBKeyRange.only(id));
+  while (cursor !== null) {
+    removedHighlights.push(cursor.value);
+    await cursor.delete();
+    cursor = await cursor.continue();
+  }
+  // The tombstone goes in the same transaction as the deletion - otherwise
+  // an interruption between them would leave a deletion sync never hears
+  // about, and the item would come back from another device.
+  await tx.objectStore('tombstones').put({ url: existing.url, deletedAt: Date.now() });
+
   await tx.done;
-  return existing !== undefined;
+  return { item: existing, content, highlights: removedHighlights };
+}
+
+/**
+ * Puts back what `deleteItem` took out, under the same id.
+ *
+ * The grave goes with it, or the next sync would carry out the deletion the
+ * user has just taken back - on this device and on every other one.
+ */
+export async function restoreItem(removed: RemovedItem): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(['items', 'contents', 'highlights', 'tombstones'], 'readwrite');
+
+  await tx.objectStore('items').put(removed.item);
+  if (removed.content !== undefined) await tx.objectStore('contents').put(removed.content);
+  for (const highlight of removed.highlights) {
+    await tx.objectStore('highlights').put(highlight);
+  }
+  await tx.objectStore('tombstones').delete(removed.item.url);
+
+  await tx.done;
 }
 
 export async function countItems(filter: ItemFilter = {}): Promise<number> {

@@ -1,9 +1,10 @@
 /**
  * One toast at a time, with an optional action (here: undoing a deletion).
  *
- * The toast is not just decoration: it is what counts down the time after which
- * a deletion becomes real. That is why `onExpire` always fires when the toast
- * disappears without the action being used - including a manual dismissal.
+ * The toast counts down how long the action stays on offer, not how long until
+ * anything happens - a deletion is already in the database by the time the
+ * toast appears. `onExpire` fires whenever the toast goes without the action
+ * being used, which is how the caller drops what it was holding for it.
  */
 
 export interface ToastAction {
@@ -63,8 +64,8 @@ export function showToast(host: HTMLElement, options: ToastOptions): void {
   }, options.durationMs ?? DEFAULT_MS) as unknown as number;
 }
 
-/** Closes the toast immediately as if the time had run out (on window close, say). */
-export function flushToast(host: HTMLElement): void {
+/** Closes the toast immediately, as if the time had run out. */
+function flushToast(host: HTMLElement): void {
   const pending = expire;
   expire = undefined;
   hide(host);

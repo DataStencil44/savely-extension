@@ -353,9 +353,11 @@ describe('the full page', () => {
   });
 
   it('a deletion shows a toast and can be undone', async () => {
-    const first = document.querySelector('.card__title')?.textContent;
+    const card = document.querySelector<HTMLLIElement>('.card');
+    const first = card?.querySelector('.card__title')?.textContent;
+    const id = card?.dataset['id'] ?? '';
 
-    document.querySelector<HTMLButtonElement>('.card__actions .icon:last-child')?.click();
+    document.querySelector<HTMLButtonElement>('.card__actions [aria-label^="Delete"]')?.click();
     await settle(30);
 
     const toast = document.querySelector<HTMLElement>('#toast');
@@ -363,11 +365,17 @@ describe('the full page', () => {
     expect(toast?.textContent).toContain('Deleted');
     expect(document.querySelector('.card__title')?.textContent).not.toBe(first);
 
+    // The database is told at once, not when the toast expires: a popup closed
+    // in the meantime used to take the deletion with it.
+    await expect(getItem(id)).resolves.toBeUndefined();
+
     document.querySelector<HTMLButtonElement>('.toast__action')?.click();
-    await settle(30);
+    await settle(50);
 
     expect(document.querySelector<HTMLElement>('#toast')?.hidden).toBe(true);
     expect(document.querySelector('.card__title')?.textContent).toBe(first);
+    // And Undo is a restoration, not a deletion that never happened.
+    await expect(getItem(id)).resolves.toMatchObject({ id });
   });
 });
 
