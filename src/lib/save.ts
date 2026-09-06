@@ -14,7 +14,7 @@
 import browser from 'webextension-polyfill';
 
 import { saveItem, setContent, putFavicon } from './db';
-import { captureFavicon, faviconKey, faviconUrlOf } from './favicon';
+import { captureFavicon, faviconKey, faviconUrlsOf } from './favicon';
 import { isOutcomeResponse } from './guards';
 import { extractHtmlOutOfBand } from './offscreen';
 import { checkPageUrl } from './page-url';
@@ -201,7 +201,7 @@ export async function saveLinkInBackground(url: string): Promise<SaveResult> {
     const outcome = await extractHtmlOutOfBand(html, response.url === '' ? url : response.url);
     // Here the icon is fetched by us: the host permission for this address was
     // granted a moment ago, and the offscreen document does no network at all.
-    const favicon = await captureFavicon(faviconUrlOf(outcome));
+    const favicon = await captureFavicon(faviconUrlsOf(outcome));
     return await persist(outcome, url, favicon);
   } catch (error) {
     return fail(`Could not process the page (${errorMessage(error)}).`);

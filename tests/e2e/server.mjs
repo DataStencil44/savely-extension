@@ -17,6 +17,7 @@ const PORT = Number(process.env.E2E_PORT ?? 5177);
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.png': 'image/png',
+  '.ico': 'image/x-icon',
   '.css': 'text/css; charset=utf-8',
 };
 

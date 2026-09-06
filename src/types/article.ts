@@ -17,8 +17,12 @@ export interface ExtractedArticle {
   estReadingMinutes: number;
   /** The address links and images were resolved against. */
   resolvedUrl: string;
-  /** Where the site icon can be fetched from - the bytes are pulled by the side that has network access. */
-  faviconUrl: string | null;
+  /**
+    * Where the site icon might be fetched from, best first - the bytes are
+    * pulled by the side that has network access, which tries them in order
+    * (a declared icon often sits on a host that side cannot reach).
+    */
+  faviconUrls: string[];
 }
 
 /** Why the full content could not be extracted. */
@@ -38,7 +42,7 @@ export interface ArticleStub {
   siteName: string | null;
   lang: string | null;
   resolvedUrl: string;
-  faviconUrl: string | null;
+  faviconUrls: string[];
 }
 
 export type ExtractOutcome =

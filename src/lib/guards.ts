@@ -29,6 +29,10 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(isString);
+}
+
 function isNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
@@ -69,7 +73,7 @@ function isArticle(value: unknown): value is ExtractedArticle {
     isNumber(value['wordCount']) &&
     isNumber(value['estReadingMinutes']) &&
     isString(value['resolvedUrl']) &&
-    isNullableString(value['faviconUrl'])
+    isStringArray(value['faviconUrls'])
   );
 }
 
@@ -81,7 +85,7 @@ function isStub(value: unknown): value is ArticleStub {
     isNullableString(value['siteName']) &&
     isNullableString(value['lang']) &&
     isString(value['resolvedUrl']) &&
-    isNullableString(value['faviconUrl'])
+    isStringArray(value['faviconUrls'])
   );
 }
 

@@ -12,9 +12,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   captureFavicon,
   faviconKey,
-  faviconUrlOf,
+  faviconUrlsOf,
   fetchFaviconDataUrl,
-  findFaviconUrl,
+  findFaviconUrls,
   sniffImageType,
   MAX_FAVICON_BYTES,
 } from './favicon';
@@ -56,34 +56,62 @@ describe('faviconKey', () => {
   });
 });
 
-describe('findFaviconUrl', () => {
+describe('findFaviconUrls', () => {
   it('prefers the declared icon and resolves it against the page', () => {
     const doc = documentWith('<link rel="icon" href="/assets/icon-32.png">');
-    expect(findFaviconUrl(doc, PAGE)).toBe('https://www.example.com/assets/icon-32.png');
+    expect(findFaviconUrls(doc, PAGE)[0]).toBe('https://www.example.com/assets/icon-32.png');
   });
 
-  it('takes an icon from another host too - the fetch decides whether it can be had', () => {
+  it('keeps an icon from another host, then the page own-origin file behind it', () => {
     const doc = documentWith('<link rel="icon" href="https://cdn.example.net/i.png">');
-    expect(findFaviconUrl(doc, PAGE)).toBe('https://cdn.example.net/i.png');
+    // The order matters: the content script cannot reach the CDN, so without
+    // the second candidate a site like this had no icon at all.
+    expect(findFaviconUrls(doc, PAGE)).toEqual([
+      'https://cdn.example.net/i.png',
+      'https://www.example.com/favicon.ico',
+    ]);
   });
 
   it('falls back to /favicon.ico when the document declares nothing', () => {
-    expect(findFaviconUrl(documentWith(''), PAGE)).toBe('https://www.example.com/favicon.ico');
+    expect(findFaviconUrls(documentWith(''), PAGE)).toEqual(['https://www.example.com/favicon.ico']);
   });
 
-  it('falls back when the only declared icon is not fetchable', () => {
+  it('skips an address that is not fetchable', () => {
     const doc = documentWith('<link rel="icon" href="javascript:alert(1)">');
-    expect(findFaviconUrl(doc, PAGE)).toBe('https://www.example.com/favicon.ico');
+    expect(findFaviconUrls(doc, PAGE)).toEqual(['https://www.example.com/favicon.ico']);
   });
 
   it('accepts an inline data: icon', () => {
     const doc = documentWith('<link rel="icon" href="data:image/png;base64,AAAA">');
-    expect(findFaviconUrl(doc, PAGE)).toBe('data:image/png;base64,AAAA');
+    expect(findFaviconUrls(doc, PAGE)[0]).toBe('data:image/png;base64,AAAA');
   });
 
-  it('reads the apple variant when there is no plain icon', () => {
-    const doc = documentWith('<link rel="apple-touch-icon" href="/touch.png">');
-    expect(findFaviconUrl(doc, PAGE)).toBe('https://www.example.com/touch.png');
+  it('reads the apple variant too, after the plain icon', () => {
+    const doc = documentWith(
+      '<link rel="apple-touch-icon" href="/touch.png"><link rel="icon" href="/icon.png">',
+    );
+    expect(findFaviconUrls(doc, PAGE)).toEqual([
+      'https://www.example.com/icon.png',
+      'https://www.example.com/touch.png',
+      'https://www.example.com/favicon.ico',
+    ]);
+  });
+
+  it('lists an address once, however many times the page declares it', () => {
+    const doc = documentWith(
+      '<link rel="icon" href="/icon.png"><link rel="shortcut icon" href="/icon.png">',
+    );
+    expect(findFaviconUrls(doc, PAGE)).toEqual([
+      'https://www.example.com/icon.png',
+      'https://www.example.com/favicon.ico',
+    ]);
+  });
+
+  it('stops at four candidates - beyond that the site is teasing', () => {
+    const doc = documentWith(
+      ['a', 'b', 'c', 'd', 'e'].map((name) => `<link rel="icon" href="/${name}.png">`).join(''),
+    );
+    expect(findFaviconUrls(doc, PAGE)).toHaveLength(4);
   });
 });
 
@@ -146,28 +174,61 @@ describe('captureFavicon', () => {
   it('does nothing when there is no address', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
-    await expect(captureFavicon(null)).resolves.toBeNull();
+    await expect(captureFavicon([])).resolves.toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('moves on to the next candidate when the first cannot be had', async () => {
+    // What CORS does to a cross-origin icon requested from the content script.
+    const fetchSpy = vi.fn((url: string) =>
+      url.includes('cdn.example.net')
+        ? Promise.reject(new Error('Failed to fetch'))
+        : Promise.resolve({
+            ok: true,
+            arrayBuffer: () => Promise.resolve(PNG.buffer.slice(0)),
+          } as unknown as Response),
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+
+    await expect(
+      captureFavicon(['https://cdn.example.net/i.png', 'https://www.example.com/favicon.ico']),
+    ).resolves.toMatch(/^data:image\/png;base64,/);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops at the first candidate that yields bytes', async () => {
+    respondWith(PNG);
+    await expect(
+      captureFavicon(['https://www.example.com/icon.png', 'https://www.example.com/favicon.ico']),
+    ).resolves.toMatch(/^data:image\/png;base64,/);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('is null when no candidate works - a missing icon never fails a save', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('offline'))));
+    await expect(
+      captureFavicon(['https://www.example.com/icon.png', 'https://www.example.com/favicon.ico']),
+    ).resolves.toBeNull();
   });
 });
 
-describe('faviconUrlOf', () => {
-  const url = 'https://example.com/favicon.ico';
+describe('faviconUrlsOf', () => {
+  const urls = ['https://example.com/favicon.ico'];
 
-  it('reads the address out of every shape of outcome', () => {
+  it('reads the addresses out of every shape of outcome', () => {
     const article = {
       kind: 'article',
-      article: { faviconUrl: url },
+      article: { faviconUrls: urls },
     } as unknown as ExtractOutcome;
-    const stub = { kind: 'stub', problem: 'no-article', stub: { faviconUrl: url } } as unknown as ExtractOutcome;
+    const stub = { kind: 'stub', problem: 'no-article', stub: { faviconUrls: urls } } as unknown as ExtractOutcome;
     const refused = {
       kind: 'refused',
       problem: 'empty-document',
       message: '',
     } as unknown as ExtractOutcome;
 
-    expect(faviconUrlOf(article)).toBe(url);
-    expect(faviconUrlOf(stub)).toBe(url);
-    expect(faviconUrlOf(refused)).toBeNull();
+    expect(faviconUrlsOf(article)).toEqual(urls);
+    expect(faviconUrlsOf(stub)).toEqual(urls);
+    expect(faviconUrlsOf(refused)).toEqual([]);
   });
 });

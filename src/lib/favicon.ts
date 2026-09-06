@@ -10,6 +10,10 @@
  * Icons live per domain, not per item: one copy of `example.com/favicon.ico`
  * serves every article saved from there.
  *
+ * The address is never a single guess: `findFaviconUrls` returns candidates and
+ * `captureFavicon` walks them until one yields bytes, because what a page
+ * declares is frequently on a host we are not allowed to ask.
+ *
  * This module touches no browser API beyond `fetch`, so it runs in the content
  * script (path A) and in the service worker (path B) alike.
  */
@@ -19,8 +23,17 @@ import type { ExtractOutcome } from '@/types/article';
 /** Bigger than this and it is not a favicon any more - we would rather show nothing. */
 export const MAX_FAVICON_BYTES = 64 * 1024;
 
-/** How long we wait for the icon. The save must not hang on a slow CDN. */
+/** How long we wait for one icon. The save must not hang on a slow CDN. */
 const FETCH_TIMEOUT_MS = 3000;
+
+/**
+ * The whole hunt, across every candidate. A site that declares four icons on
+ * four dead hosts must not add four timeouts to the save.
+ */
+const TOTAL_BUDGET_MS = 6000;
+
+/** How many addresses we are willing to try. Beyond that the site is teasing. */
+const MAX_CANDIDATES = 4;
 
 const ICON_SELECTORS: readonly string[] = [
   'link[rel~="icon" i]',
@@ -45,22 +58,38 @@ export function faviconKey(url: string): string | null {
 }
 
 /**
- * The icon declared by the document, or the address every browser tries anyway.
+ * Every icon address worth trying, best first.
  *
- * `<link rel="icon">` wins over `/favicon.ico` because a site that declares an
- * icon usually declares a better one than the file in the root.
+ * A list rather than one address, because the first candidate often cannot be
+ * had: an icon declared on a CDN is a cross-origin request, and from the
+ * content script - which has only the tab's own origin (`activeTab`) - the
+ * browser refuses it. `/favicon.ico` is always appended last for exactly that
+ * reason: it lies on the page's own origin, so it is the one candidate path A
+ * can always reach. Without it a single `<link rel="icon">` pointing off-site
+ * meant no icon at all.
+ *
+ * Declared icons keep the document's order (`rel="icon"` before the apple
+ * variants) - the site knows which of its icons is the good one, and where we
+ * do have access we would rather have that one than the file in the root.
  */
-export function findFaviconUrl(doc: Document, pageUrl: string): string | null {
+export function findFaviconUrls(doc: Document, pageUrl: string): string[] {
+  const candidates: string[] = [];
+
+  const add = (url: string | null): void => {
+    if (url !== null && !candidates.includes(url)) candidates.push(url);
+  };
+
   for (const selector of ICON_SELECTORS) {
     for (const link of doc.querySelectorAll(selector)) {
       const href = link.getAttribute('href')?.trim();
       if (href === undefined || href === '') continue;
-      const resolved = resolveIconUrl(href, pageUrl);
-      if (resolved !== null) return resolved;
+      add(resolveIconUrl(href, pageUrl));
     }
   }
 
-  return resolveIconUrl('/favicon.ico', pageUrl);
+  add(resolveIconUrl('/favicon.ico', pageUrl));
+
+  return candidates.slice(0, MAX_CANDIDATES);
 }
 
 /**
@@ -126,7 +155,10 @@ function toDataUrl(bytes: Uint8Array, type: string): string {
  *
  * `credentials: 'omit'`: an icon is not worth sending the user's cookies for.
  */
-export async function fetchFaviconDataUrl(url: string): Promise<string | null> {
+export async function fetchFaviconDataUrl(
+  url: string,
+  timeoutMs: number = FETCH_TIMEOUT_MS,
+): Promise<string | null> {
   if (url.startsWith('data:')) return url.length > MAX_FAVICON_BYTES ? null : url;
 
   let response: Response;
@@ -134,7 +166,7 @@ export async function fetchFaviconDataUrl(url: string): Promise<string | null> {
     response = await fetch(url, {
       credentials: 'omit',
       redirect: 'follow',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     return null;
@@ -157,20 +189,37 @@ export async function fetchFaviconDataUrl(url: string): Promise<string | null> {
   return toDataUrl(bytes, type);
 }
 
-/** The icon address carried by an extraction result, whatever shape it came back in. */
-export function faviconUrlOf(outcome: ExtractOutcome): string | null {
+/** The icon addresses carried by an extraction result, whatever shape it came back in. */
+export function faviconUrlsOf(outcome: ExtractOutcome): string[] {
   switch (outcome.kind) {
     case 'article':
-      return outcome.article.faviconUrl;
+      return outcome.article.faviconUrls;
     case 'stub':
-      return outcome.stub.faviconUrl;
+      return outcome.stub.faviconUrls;
     case 'refused':
-      return null;
+      return [];
   }
 }
 
-/** The whole capture in one call: from the address in the document to the bytes. */
-export async function captureFavicon(faviconUrl: string | null): Promise<string | null> {
-  if (faviconUrl === null) return null;
-  return fetchFaviconDataUrl(faviconUrl);
+/**
+ * The whole capture in one call: from the addresses in the document to the
+ * bytes of the first one we can actually get.
+ *
+ * The candidates are tried in order and share one deadline, so the common case
+ * (a cross-origin icon refused instantly by CORS, then `/favicon.ico`) costs
+ * one extra round trip, while a page full of unreachable hosts still cannot
+ * hold the save longer than `TOTAL_BUDGET_MS`.
+ */
+export async function captureFavicon(faviconUrls: readonly string[]): Promise<string | null> {
+  const deadline = Date.now() + TOTAL_BUDGET_MS;
+
+  for (const url of faviconUrls.slice(0, MAX_CANDIDATES)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return null;
+
+    const dataUrl = await fetchFaviconDataUrl(url, Math.min(FETCH_TIMEOUT_MS, remaining));
+    if (dataUrl !== null) return dataUrl;
+  }
+
+  return null;
 }

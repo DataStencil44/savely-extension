@@ -7,6 +7,8 @@
  * icon, and it goes out from here precisely to avoid CORS: from the page's own
  * origin the icon is a same-origin file, while the same fetch from the
  * background would need a host permission we do not ask for on this path.
+ * An icon the page declares on *another* host is still out of reach here - the
+ * candidate list ends with the page's own `/favicon.ico` for that case.
  *
  * Security note: the script lives in an isolated world, so `DOMParser` and the
  * other globals DOMPurify uses come from our realm - the page cannot swap them
@@ -15,7 +17,7 @@
 import browser from 'webextension-polyfill';
 
 import { extractFromDocument } from '@/lib/extract';
-import { captureFavicon, faviconUrlOf } from '@/lib/favicon';
+import { captureFavicon, faviconUrlsOf } from '@/lib/favicon';
 import { isExtractRequest } from '@/lib/guards';
 import type { OutcomeResponse } from '@/types/messages';
 
@@ -46,5 +48,5 @@ if (!(READY_FLAG in globalThis)) {
  */
 async function respond(): Promise<OutcomeResponse> {
   const outcome = extractFromDocument(document, document.location.href);
-  return { type: 'savely:outcome', outcome, favicon: await captureFavicon(faviconUrlOf(outcome)) };
+  return { type: 'savely:outcome', outcome, favicon: await captureFavicon(faviconUrlsOf(outcome)) };
 }
