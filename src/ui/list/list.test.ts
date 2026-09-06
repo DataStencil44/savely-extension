@@ -266,6 +266,25 @@ describe('the full page', () => {
     expect(document.querySelector<HTMLDialogElement>('#help-dialog')?.open).toBe(false);
   });
 
+  it('leaves Enter to the button that has focus', async () => {
+    openedTabs.length = 0;
+
+    // A card is selected, the way the arrow keys leave it...
+    document.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' }));
+    await settle(30);
+
+    // ...and the user then tabs to an action and presses Enter on it. The
+    // button's own job is the whole job - the reader must stay shut.
+    const remove = document.querySelector<HTMLButtonElement>(
+      '.card[aria-selected="true"] .card__actions [aria-label^="Delete"]',
+    );
+    remove?.focus();
+    remove?.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
+    await settle(30);
+
+    expect(openedTabs).toEqual([]);
+  });
+
   it('clicking a tag turns the filter on and the chip turns it off', async () => {
     document.querySelector<HTMLButtonElement>('.card__tags .chip')?.click();
     await settle(30);

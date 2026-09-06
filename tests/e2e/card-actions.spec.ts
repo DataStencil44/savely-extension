@@ -1,0 +1,48 @@
+/**
+ * The card's action buttons under the keyboard.
+ *
+ * The list listens for its shortcuts on `document`, so a key pressed while a
+ * button has focus reaches both. Enter is the collision that matters: it is
+ * how a focused button is pressed, and it is also "open the reader" - and the
+ * shortcut's `preventDefault` used to cancel the button's activation, so Enter
+ * on Delete opened the reader and deleted nothing.
+ */
+import { expect, test } from './extension';
+
+declare const chrome: {
+  runtime: { sendMessage: (message: unknown) => Promise<{ ok: boolean; message: string }> };
+};
+
+const ORIGIN = 'http://127.0.0.1:5177';
+const SAVE_ACTIVE_TAB = 'savely:save-active-tab';
+
+test('Enter on an action button runs that action, not the reader', async ({
+  context,
+  extensionId,
+}) => {
+  const article = await context.newPage();
+  await article.goto(`${ORIGIN}/article.html`);
+
+  const list = await context.newPage();
+  await list.goto(`chrome-extension://${extensionId}/ui/list/list.html?full=1`);
+  await article.bringToFront();
+  const saved = await list.evaluate((type) => chrome.runtime.sendMessage({ type }), SAVE_ACTIVE_TAB);
+  expect(saved, saved.message).toMatchObject({ ok: true });
+
+  await list.bringToFront();
+  await list.reload();
+  await expect(list.locator('.card')).toHaveCount(1);
+
+  const pagesBefore = context.pages().length;
+
+  // The card is selected, as the arrow keys leave it, and the user then
+  // presses Enter on an action button.
+  await list.keyboard.press('ArrowDown');
+  await list.locator('.card__actions [aria-label$="favorites (f)"]').focus();
+  await list.keyboard.press('Enter');
+
+  // The button did its own job...
+  await expect(list.locator('.card__actions [aria-pressed="true"][aria-label*="favorites"]')).toHaveCount(1);
+  // ...and nothing else opened on top of it.
+  expect(context.pages()).toHaveLength(pagesBefore);
+});

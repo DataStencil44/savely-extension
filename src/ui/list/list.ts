@@ -453,6 +453,12 @@ function onKeyDown(event: KeyboardEvent): void {
 
   if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
 
+  // A focused button answers Enter and Space itself, and the shortcut does not
+  // merely fire on top of it: `preventDefault` below cancels the click the
+  // browser was about to synthesize, so Enter on the delete button opened the
+  // reader and deleted nothing. Whoever tabbed to a button meant that button.
+  if ((event.key === 'Enter' || event.key === ' ') && target instanceof HTMLButtonElement) return;
+
   const item = selectedItem();
 
   switch (event.key) {
