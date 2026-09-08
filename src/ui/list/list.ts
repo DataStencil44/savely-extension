@@ -29,6 +29,7 @@ import { THEME_ICONS, THEME_LABELS, initTheme, nextTheme, setTheme } from '@/lib
 import { SAVE_ACTIVE_TAB } from '@/types/messages';
 
 import { TAG_LIMIT, createCard, type CardCallbacks } from './cards';
+import { parseQuery } from './query';
 import { closeTagEditor, openTagEditor } from './tags';
 import { showToast } from './toast';
 import { computeWindow, scrollTopFor } from './window';
@@ -167,6 +168,30 @@ function matchesTab(item: SavedItem): boolean {
 
 function matchesTags(item: SavedItem): boolean {
   return state.tags.every((tag) => item.tags.includes(tag));
+}
+
+/**
+ * What the search field does with what is in it: `tag:` tokens become filter
+ * chips (`parseQuery`), the rest is searched for as words.
+ *
+ * `commitTrailing` is Enter - it finishes the token being typed, so a filter
+ * can be applied without a trailing space.
+ */
+function applySearchInput(commitTrailing = false): void {
+  if (el.search === null) return;
+
+  const parsed = parseQuery(el.search.value, commitTrailing);
+  // Only rewrite the field when something actually left it - otherwise the
+  // caret would jump to the end on every keystroke.
+  if (parsed.tags.length > 0) el.search.value = parsed.text;
+  for (const tag of parsed.tags) {
+    if (!state.tags.includes(tag)) state.tags = [...state.tags, tag];
+  }
+
+  state.query = parsed.query;
+  state.selected = -1;
+  if (el.scroller !== null) el.scroller.scrollTop = 0;
+  recompute();
 }
 
 function knownTags(): string[] {
@@ -474,8 +499,7 @@ function onKeyDown(event: KeyboardEvent): void {
     closeTagEditor();
     if (typing && el.search !== null && target === el.search) {
       el.search.value = '';
-      state.query = '';
-      recompute();
+      applySearchInput();
       el.search.blur();
     }
     return;
@@ -656,11 +680,17 @@ function wireEvents(): void {
   el.search?.addEventListener('input', () => {
     if (searchTimer !== undefined) clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
-      state.query = el.search?.value ?? '';
-      state.selected = -1;
-      if (el.scroller !== null) el.scroller.scrollTop = 0;
-      recompute();
+      applySearchInput();
     }, SEARCH_DEBOUNCE_MS) as unknown as number;
+  });
+
+  // Enter turns the token being typed into a filter without waiting for the
+  // space - and without waiting for the debounce either.
+  el.search?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    if (searchTimer !== undefined) clearTimeout(searchTimer);
+    applySearchInput(true);
   });
 
   let frame = 0;

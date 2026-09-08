@@ -327,6 +327,56 @@ describe('the full page', () => {
     expect(openedTabs).toEqual([]);
   });
 
+  it('`tag:` in the search box becomes the same filter a chip click makes', async () => {
+    const search = document.querySelector<HTMLInputElement>('#search');
+    if (search === null) throw new Error('no search field');
+
+    // A space finishes the token: it leaves the field and becomes a chip.
+    search.value = 'tag:rust ';
+    search.dispatchEvent(new Event('input'));
+    await settle(200);
+
+    expect(search.value).toBe('');
+    expect(document.querySelector('#active-tags')?.textContent).toContain('#rust');
+    for (const card of cards()) {
+      expect(card.querySelector('.card__tags')?.textContent).toContain('#rust');
+    }
+
+    // Enter finishes it without the space, and the words around it still search.
+    search.value = 'number 33 tag:rust';
+    search.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
+    await settle(60);
+    expect(search.value).toBe('number 33');
+    expect(document.querySelector('.card__title')?.textContent).toBe('Article number 33');
+
+    document.querySelector<HTMLButtonElement>('#active-tags .chip')?.click();
+    search.value = '';
+    search.dispatchEvent(new Event('input'));
+    await settle(200);
+    expect(document.querySelector<HTMLElement>('#active-tags')?.hidden).toBe(true);
+  });
+
+  it('a half-typed `tag:` does not empty the list before the space', async () => {
+    const search = document.querySelector<HTMLInputElement>('#search');
+    if (search === null) throw new Error('no search field');
+
+    search.value = 'tag:ru';
+    search.dispatchEvent(new Event('input'));
+    await settle(200);
+
+    // Still everything: the fragment is neither a filter nor a word to search for.
+    expect(search.value).toBe('tag:ru');
+    expect(document.querySelector<HTMLElement>('#active-tags')?.hidden).toBe(true);
+    expect(cards().length).toBeGreaterThan(0);
+    expect(document.querySelector('.card__title')?.textContent).toBe(
+      `Article number ${String(ITEMS - 1)}`,
+    );
+
+    search.value = '';
+    search.dispatchEvent(new Event('input'));
+    await settle(200);
+  });
+
   it('clicking a tag turns the filter on and the chip turns it off', async () => {
     document.querySelector<HTMLButtonElement>('.card__tags .chip')?.click();
     await settle(30);
