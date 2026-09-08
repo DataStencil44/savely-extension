@@ -18,8 +18,9 @@ Edge, Opera) i Firefox (desktop + Android).
 | Ekstrakcja treści | ✅ | `@mozilla/readability` na żywym DOM-ie karty; zapis linku w tle przez `fetch` + dokument offscreen (Chromium) |
 | Sanityzacja | ✅ | DOMPurify, lista dozwolonych tagów, `javascript:`/`data:text/html` odrzucane, testy na zestawie wektorów XSS |
 | Baza lokalna | ✅ | IndexedDB (`idb`), sześć magazynów, jawne migracje, schemat v5 |
-| Lista | ✅ | wirtualizacja, zakładki (inbox/ulubione/archiwum), tagi, pełnotekstowe wyszukiwanie (`flexsearch`), skróty klawiszowe, cofanie usunięcia, ikona strony na karcie |
-| Czytnik | ✅ | typografia (rozmiar, krój, szerokość, motywy jasny/ciemny/sepia/auto), pasek postępu, pozycja scrolla, podświetlenia z notatkami, auto-oznaczanie po 90%, tryb bez obrazków zdalnych |
+| Lista | ✅ | wirtualizacja, zakładki (inbox/ulubione/archiwum), tagi, pełnotekstowe wyszukiwanie (`flexsearch`), skróty klawiszowe, cofanie usunięcia, ikona strony na karcie, przełącznik motywu (`d`) |
+| Motyw | ✅ | jasny (domyślny), ciemny, sepia, systemowy — jedno ustawienie dla listy, opcji i czytnika; przełącznik w liście, na stronie opcji i w czytniku |
+| Czytnik | ✅ | typografia (rozmiar, krój, szerokość, motyw), pasek postępu, pozycja scrolla, podświetlenia z notatkami, auto-oznaczanie po 90%, tryb bez obrazków zdalnych |
 | Przenośność danych | ✅ | eksport JSON i zakładek Netscape, import JSON i CSV z Pocketa, dobowe kopie metadanych, strona opcji z licznikami i kasowaniem bazy |
 | Synchronizacja urządzeń | ✅ | opcjonalna, domyślnie wyłączona; wymienny `SyncProvider`, na start prywatny GitHub Gist (patrz niżej) |
 | Ustawienia | ✅ | `storage.sync` z fallbackiem na `storage.local` |

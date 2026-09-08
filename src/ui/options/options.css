@@ -1,36 +1,11 @@
 /*
- * The options page. The same variables as the list - one look across the whole
- * extension, with no CSS framework (CLAUDE.md 2). It has to stay readable at
+ * The options page. The palette comes from the shared `../theme.css`, the same
+ * one the list uses - one look across the whole extension, with no CSS
+ * framework (CLAUDE.md 2). It has to stay readable at
  * 360 px, because on
  * Firefoksie na Androidzie to jedyne miejsce z eksportem i importem.
  */
-:root {
-  --bg: #ffffff;
-  --bg-elevated: #f4f4f5;
-  --bg-hover: #ececee;
-  --text: #18181b;
-  --text-muted: #71717a;
-  --border: #e4e4e7;
-  --accent: #2563eb;
-  --danger: #b91c1c;
-  --shadow: 0 8px 24px rgb(0 0 0 / 0.14);
-
-  color-scheme: light dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #18181b;
-    --bg-elevated: #27272a;
-    --bg-hover: #323238;
-    --text: #fafafa;
-    --text-muted: #a1a1aa;
-    --border: #3f3f46;
-    --accent: #60a5fa;
-    --danger: #f87171;
-    --shadow: 0 8px 24px rgb(0 0 0 / 0.5);
-  }
-}
+@import '../theme.css';
 
 * {
   box-sizing: border-box;
@@ -180,6 +155,18 @@ code {
 
 .button--danger {
   background: var(--danger);
+}
+
+.button--ghost[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.themes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 /* --- import --- */

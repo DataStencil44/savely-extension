@@ -1,0 +1,73 @@
+/*
+ * The palette shared by the list and the options page - one file, so the two
+ * cannot drift apart (the reader keeps its own, typographic set of variables).
+ *
+ * Light is the base: it sits on bare `:root`, so a page renders correctly
+ * before the module has read the setting out of storage, and the default theme
+ * needs no attribute at all. Every other theme only redefines the variables,
+ * under `:root[data-theme=...]` - switching a theme is one attribute swap on
+ * <html> (`src/lib/theme.ts`), with no reload.
+ *
+ * `auto` is the only theme that asks the system; it has to repeat the dark
+ * values, because a media query cannot reference another rule's declarations.
+ */
+:root {
+  --bg: #ffffff;
+  --bg-elevated: #f4f4f5;
+  --bg-hover: #ececee;
+  --text: #18181b;
+  --text-muted: #71717a;
+  --border: #e4e4e7;
+  --accent: #2563eb;
+  --danger: #b91c1c;
+  --shadow: 0 8px 24px rgb(0 0 0 / 0.14);
+
+  /* Native widgets (scrollbars, form controls) follow this, not our variables. */
+  color-scheme: light;
+}
+
+:root[data-theme='sepia'] {
+  --bg: #f6efe2;
+  --bg-elevated: #efe5d3;
+  --bg-hover: #e7dbc4;
+  --text: #3a3226;
+  --text-muted: #7a6d59;
+  --border: #ddd0b8;
+  --accent: #9a5b1f;
+  --danger: #a03232;
+  --shadow: 0 8px 24px rgb(58 50 38 / 0.18);
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #18181b;
+  --bg-elevated: #27272a;
+  --bg-hover: #323238;
+  --text: #fafafa;
+  --text-muted: #a1a1aa;
+  --border: #3f3f46;
+  --accent: #60a5fa;
+  --danger: #f87171;
+  --shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+
+  color-scheme: dark;
+}
+
+:root[data-theme='auto'] {
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='auto'] {
+    --bg: #18181b;
+    --bg-elevated: #27272a;
+    --bg-hover: #323238;
+    --text: #fafafa;
+    --text-muted: #a1a1aa;
+    --border: #3f3f46;
+    --accent: #60a5fa;
+    --danger: #f87171;
+    --shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+  }
+}

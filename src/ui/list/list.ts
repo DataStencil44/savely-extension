@@ -24,6 +24,8 @@ import {
 import { faviconKey } from '@/lib/favicon';
 import { isSaveResultMessage } from '@/lib/guards';
 import { SearchIndex } from '@/lib/search';
+import { DEFAULT_SETTINGS, type Theme } from '@/lib/settings';
+import { THEME_ICONS, THEME_LABELS, initTheme, nextTheme, setTheme } from '@/lib/theme';
 import { SAVE_ACTIVE_TAB } from '@/types/messages';
 
 import { createCard, type CardCallbacks } from './cards';
@@ -94,6 +96,7 @@ const el = {
   help: document.querySelector<HTMLDialogElement>('#help-dialog'),
   helpButton: document.querySelector<HTMLButtonElement>('#help'),
   optionsButton: document.querySelector<HTMLButtonElement>('#options'),
+  themeButton: document.querySelector<HTMLButtonElement>('#theme'),
 };
 
 // ---------------------------------------------------------------------------
@@ -518,6 +521,9 @@ function onKeyDown(event: KeyboardEvent): void {
     case '3':
       switchTab('archive');
       return;
+    case 'd':
+      cycleTheme();
+      return;
     default:
       break;
   }
@@ -559,6 +565,35 @@ function switchTab(tab: TabId): void {
   state.selected = -1;
   if (el.scroller !== null) el.scroller.scrollTop = 0;
   recompute();
+}
+
+// ---------------------------------------------------------------------------
+// Theme
+// ---------------------------------------------------------------------------
+
+/**
+ * The list has room for one button, so the switcher cycles instead of showing
+ * four options: the glyph says where we are, the label says where the next
+ * click goes. The theme itself is applied by `initTheme` on <html>.
+ */
+let theme: Theme = DEFAULT_SETTINGS.theme;
+
+function showTheme(next: Theme): void {
+  theme = next;
+  if (el.themeButton === null) return;
+
+  const following = THEME_LABELS[nextTheme(next)];
+  el.themeButton.textContent = THEME_ICONS[next];
+  el.themeButton.title = `Theme: ${THEME_LABELS[next]} (switch to ${following})`;
+  el.themeButton.setAttribute('aria-label', el.themeButton.title);
+}
+
+function cycleTheme(): void {
+  // The button redraws before the write lands - the switch has to feel instant,
+  // and `initTheme`'s listener corrects it if the write ends up somewhere else.
+  const next = nextTheme(theme);
+  showTheme(next);
+  void setTheme(next);
 }
 
 // ---------------------------------------------------------------------------
@@ -656,6 +691,8 @@ function wireEvents(): void {
 
   el.helpButton?.addEventListener('click', toggleHelp);
 
+  el.themeButton?.addEventListener('click', cycleTheme);
+
   // On Firefox for Android about:addons is the only alternative - hence the
   // entry point to the options page from the list as well (CLAUDE.md 5.6).
   el.optionsButton?.addEventListener('click', () => {
@@ -672,6 +709,10 @@ function wireEvents(): void {
 
 async function main(): Promise<void> {
   wireEvents();
+
+  // Not awaited with the data: the theme is one storage read, and the list must
+  // not wait for it - `initTheme` also keeps the page in step with the reader.
+  void initTheme(showTheme);
 
   await Promise.all([loadItems(), loadFavicons()]);
   indexMetadata();

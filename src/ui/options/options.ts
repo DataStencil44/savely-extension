@@ -35,6 +35,7 @@ import {
   restoreSnapshot,
   type MergeOutcome,
 } from '@/lib/db';
+import { type Theme } from '@/lib/settings';
 import {
   SYNC_INTERVAL_MINUTES,
   applyAutoSync,
@@ -45,6 +46,7 @@ import {
   syncNow,
   type SyncProvider,
 } from '@/lib/sync';
+import { initTheme, setTheme } from '@/lib/theme';
 import { showToast } from '@/ui/list/toast';
 
 /** The blob has to outlive the start of the download - the browser copies it asynchronously. */
@@ -74,6 +76,7 @@ const el = {
   snapshots: document.querySelector<HTMLUListElement>('#snapshots'),
   snapshotNow: document.querySelector<HTMLButtonElement>('#snapshot-now'),
   wipe: document.querySelector<HTMLButtonElement>('#wipe'),
+  themes: [...document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]')],
   toast: document.querySelector<HTMLDivElement>('#toast'),
   dialog: document.querySelector<HTMLDialogElement>('#confirm-dialog'),
   dialogTitle: document.querySelector<HTMLHeadingElement>('#confirm-title'),
@@ -559,6 +562,32 @@ async function wipe(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Appearance
+// ---------------------------------------------------------------------------
+
+/**
+ * Four buttons rather than the list's one-button cycle: here there is room, and
+ * a settings page should show what the options are, not make you click through
+ * them. Both switches write the same setting.
+ */
+function showTheme(theme: Theme): void {
+  for (const button of el.themes) {
+    button.setAttribute('aria-pressed', String(button.dataset['themeChoice'] === theme));
+  }
+}
+
+function wireThemes(): void {
+  for (const button of el.themes) {
+    button.addEventListener('click', () => {
+      const choice = button.dataset['themeChoice'] as Theme | undefined;
+      if (choice === undefined) return;
+      showTheme(choice);
+      void setTheme(choice);
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Startup
 // ---------------------------------------------------------------------------
 
@@ -624,10 +653,15 @@ function wire(): void {
   el.wipe?.addEventListener('click', () => {
     void wipe();
   });
+
+  wireThemes();
 }
 
 async function main(): Promise<void> {
   wire();
+  // Not awaited: reading the counters is the slow part of this page, and the
+  // theme must not queue behind it.
+  void initTheme(showTheme);
   if (el.snapshotNow !== null) {
     el.snapshotNow.title = `We keep the last ${String(SNAPSHOT_LIMIT)} backups.`;
   }

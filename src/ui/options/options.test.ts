@@ -151,6 +151,27 @@ describe('the options page', () => {
     expect(text('#sync-secret-label')).toBe('GitHub personal access token');
   });
 
+  it('the theme buttons switch the whole UI and mark the current one', async () => {
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]')];
+    expect(buttons.map((button) => button.dataset['themeChoice'])).toEqual([
+      'light',
+      'dark',
+      'sepia',
+      'auto',
+    ]);
+
+    const pressed = (): string | undefined =>
+      buttons.find((button) => button.getAttribute('aria-pressed') === 'true')?.dataset[
+        'themeChoice'
+      ];
+    expect(pressed()).toBe('light');
+
+    buttons[1]?.click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(document.documentElement.dataset['theme']).toBe('dark');
+    expect(pressed()).toBe('dark');
+  });
+
   it('exports a full backup under a dated name', async () => {
     click('#export-json');
     await settle(60);

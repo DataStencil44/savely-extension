@@ -13,6 +13,7 @@
 import browser from 'webextension-polyfill';
 
 export type FontFamily = 'serif' | 'sans' | 'dyslexia';
+/** `auto` follows the system; every other value is the user's explicit choice. */
 export type Theme = 'light' | 'dark' | 'sepia' | 'auto';
 
 export interface ReaderSettings {
@@ -21,6 +22,7 @@ export interface ReaderSettings {
   fontFamily: FontFamily;
   /** Column width in characters (`ch`). ~68 is a comfortable line length. */
   columnWidth: number;
+  /** The look of the whole UI - the reader, the list and the options page. */
   theme: Theme;
   /** When `false`, images from the original are not fetched - zero outbound traffic. */
   remoteImages: boolean;
@@ -30,7 +32,9 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   fontSize: 18,
   fontFamily: 'serif',
   columnWidth: 68,
-  theme: 'auto',
+  // Light, not `auto`: the default has to be a look we chose and checked, the
+  // same one on every machine. Following the system is one click away.
+  theme: 'light',
   remoteImages: true,
 };
 
@@ -114,10 +118,15 @@ export async function saveSettings(patch: Partial<ReaderSettings>): Promise<Read
 
 /** A settings change in another tab should land here without a reload. */
 export function onSettingsChanged(listener: (settings: ReaderSettings) => void): void {
-  browser.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== 'sync' && areaName !== 'local') return;
-    const change = changes[STORAGE_KEY];
-    if (change === undefined) return;
-    listener(parseSettings(change.newValue));
-  });
+  try {
+    browser.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName !== 'sync' && areaName !== 'local') return;
+      const change = changes[STORAGE_KEY];
+      if (change === undefined) return;
+      listener(parseSettings(change.newValue));
+    });
+  } catch {
+    // No change events is a worse experience, not a broken page: the settings
+    // that were read at startup keep working until the next reload.
+  }
 }

@@ -23,6 +23,9 @@ const ICON_DOMAIN = 'site-5.example';
 /** The addresses passed to `tabs.create` - this is how we know what opened in a new tab. */
 const openedTabs: string[] = [];
 
+/** What the theme switcher writes; `storage.sync` in the browser. */
+const settingsStore: Record<string, unknown> = {};
+
 /**
  * The page markup without `<script>` - we load the module ourselves, once the
  * DOM is ready. It is assembled with DOMParser rather than `innerHTML`: the same
@@ -69,6 +72,20 @@ beforeAll(async () => {
         query: (_query: unknown, callback: (tabs: unknown[]) => void) => {
           callback([]);
         },
+      },
+      storage: {
+        sync: {
+          get: (keys: string | string[], callback: (items: Record<string, unknown>) => void) => {
+            const key = Array.isArray(keys) ? keys[0] : keys;
+            callback(key !== undefined && key in settingsStore ? { [key]: settingsStore[key] } : {});
+          },
+          set: (items: Record<string, unknown>, callback: () => void) => {
+            Object.assign(settingsStore, items);
+            callback();
+          },
+        },
+        local: { get: (_keys: unknown, callback: (items: unknown) => void) => { callback({}); } },
+        onChanged: { addListener: noop },
       },
     },
   });
@@ -160,6 +177,31 @@ describe('the full page', () => {
     const without = [...cards()].find((card) => domainOf(card) !== ICON_DOMAIN);
     expect(iconOf(without)?.hidden).toBe(true);
     expect(iconOf(without)?.getAttribute('src')).toBeNull();
+  });
+
+  it('starts light and the switcher cycles the theme for the whole UI', async () => {
+    const button = document.querySelector<HTMLButtonElement>('#theme');
+    expect(document.documentElement.dataset['theme']).toBe('light');
+    expect(button?.title).toContain('switch to Dark');
+
+    button?.click();
+    await settle(30);
+    expect(document.documentElement.dataset['theme']).toBe('dark');
+    // The choice is a setting, not a per-page toggle - the reader picks it up too.
+    expect(settingsStore['reader-settings']).toMatchObject({ theme: 'dark' });
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'd' }));
+    await settle(30);
+    expect(document.documentElement.dataset['theme']).toBe('sepia');
+
+    button?.click();
+    await settle(30);
+    expect(document.documentElement.dataset['theme']).toBe('auto');
+
+    // And back round to the start.
+    button?.click();
+    await settle(30);
+    expect(document.documentElement.dataset['theme']).toBe('light');
   });
 
   it('the reader opens in a new tab and does not mark the item as read', async () => {
