@@ -28,7 +28,7 @@ import { DEFAULT_SETTINGS, type Theme } from '@/lib/settings';
 import { THEME_ICONS, THEME_LABELS, initTheme, nextTheme, setTheme } from '@/lib/theme';
 import { SAVE_ACTIVE_TAB } from '@/types/messages';
 
-import { createCard, type CardCallbacks } from './cards';
+import { TAG_LIMIT, createCard, type CardCallbacks } from './cards';
 import { closeTagEditor, openTagEditor } from './tags';
 import { showToast } from './toast';
 import { computeWindow, scrollTopFor } from './window';
@@ -62,12 +62,16 @@ const state = {
 };
 
 /**
- * Row height is a contract between the CSS and the virtualization, and at
- * 360 px a card grows (actions move below the tags). That is why the value
- * lives in CSS (`--row-h`) and is only read here - and re-read on resize.
+ * Row height is a contract between the CSS and the virtualization: the popup
+ * has a compact card, and at 360 px the full page grows one (the actions move
+ * below the tags). That is why the value lives in CSS (`--row-h`) and is only
+ * read here - and re-read on resize.
+ *
+ * Read off `body`, not `:root`: the mode is an attribute on `body`, so that is
+ * where the popup's override sits.
  */
 function readRowHeight(): number {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue('--row-h');
+  const raw = getComputedStyle(document.body).getPropertyValue('--row-h');
   const parsed = Number.parseInt(raw.trim(), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 104;
 }
@@ -262,7 +266,7 @@ function render(force = false): void {
   for (let position = range.start; position < range.end; position += 1) {
     const item = state.visible[position];
     if (item === undefined) continue;
-    const card = createCard(item, position, callbacks);
+    const card = createCard(item, position, callbacks, TAG_LIMIT[MODE]);
     if (position === state.selected) card.setAttribute('aria-selected', 'true');
     applyFavicon(card, item);
     cards.push(card);

@@ -8,7 +8,8 @@
 
 :root {
   /* A contract with the virtualization: the JS reads this value
-     (`readRowHeight`), so a card has to fit inside it at every screen width. */
+     (`readRowHeight`), so a card has to fit inside it at every screen width.
+     It is read off `body`, not `:root`, because the popup overrides it there. */
   --row-h: 104px;
 }
 
@@ -42,6 +43,17 @@ body {
      `html` element has no overflow of its own), so no document scrollbar can
      appear, shrink the viewport and trigger another resize. */
   overflow: hidden;
+}
+
+/*
+ * The popup is a different device from the full page: 380 px wide, opened for
+ * a moment to grab something off the top of the list. A row there is worth less
+ * height than it is worth on a page you sit with - so the card gets one line of
+ * metadata with the actions on its right, instead of a row of its own for them:
+ * 84 px instead of 128, and five items on screen where three used to fit.
+ */
+body[data-mode='popup'] {
+  --row-h: 84px;
 }
 
 body[data-mode='full'] {
@@ -350,6 +362,75 @@ body[data-mode='full'] {
   font-size: 12px;
 }
 
+/* --- the popup's compact card --- */
+
+body[data-mode='popup'] .card {
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+body[data-mode='popup'] .card__thumb {
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+}
+
+/*
+ * Two rows instead of three: the title across the top, then the metadata with
+ * the actions pushed to the end of the same line. A grid rather than more
+ * flexbox, because the footer has to sit next to the metadata while staying
+ * where it is in the markup - the same card serves both modes.
+ */
+body[data-mode='popup'] .card__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: center;
+  column-gap: 8px;
+  row-gap: 2px;
+}
+
+body[data-mode='popup'] .card__title {
+  grid-column: 1 / -1;
+}
+
+body[data-mode='popup'] .card__meta {
+  grid-column: 1;
+  align-self: center;
+}
+
+body[data-mode='popup'] .card__footer {
+  grid-column: 2;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 0;
+}
+
+/*
+ * Tags keep their place before the actions and take what is left, never more:
+ * the actions are the reason the row is there and must not be pushed off it.
+ * One tag fits here, so the card shows one and counts the rest (`TAG_LIMIT` in
+ * cards.ts); a long name ends in an ellipsis inside its own chip rather than
+ * being sliced off at the edge of the row.
+ */
+body[data-mode='popup'] .card__tags {
+  order: 0;
+  flex-wrap: nowrap;
+  max-width: 92px;
+}
+
+body[data-mode='popup'] .card__tags .chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body[data-mode='popup'] .card__actions .icon {
+  width: 24px;
+  height: 24px;
+}
+
 .empty {
   margin: 32px 12px;
   color: var(--text-muted);
@@ -479,10 +560,11 @@ body[data-mode='full'] {
 /* --- narrow: Firefox for Android, 360 px --- */
 
 @media (max-width: 400px) {
-  :root {
+  body[data-mode='full'] {
     /* The actions move below the tags, so the row has to grow. The JS reads
        this value and recomputes the virtualization - see `readRowHeight` in
-       list.ts. */
+       list.ts. The popup is narrower than this too, but it is not this case:
+       it has its own, compact card above. */
     --row-h: 128px;
   }
 
@@ -495,30 +577,30 @@ body[data-mode='full'] {
     font-size: 13px;
   }
 
-  .card {
+  body[data-mode='full'] .card {
     padding: 10px 8px;
   }
 
-  .card__thumb {
+  body[data-mode='full'] .card__thumb {
     width: 48px;
     height: 48px;
     padding: 12px;
   }
 
-  .card__actions .icon {
+  body[data-mode='full'] .card__actions .icon {
     width: 28px;
     height: 28px;
   }
 
   /* With no pointer there is no "reveal on hover" - the actions must always be
      visible, so on a narrow screen they get the card's whole bottom row. */
-  .card__footer {
+  body[data-mode='full'] .card__footer {
     flex-direction: column;
     align-items: stretch;
     gap: 4px;
   }
 
-  .card__tags {
+  body[data-mode='full'] .card__tags {
     order: 2;
   }
 }
@@ -527,5 +609,12 @@ body[data-mode='full'] {
   .card__actions .icon {
     width: 30px;
     height: 30px;
+  }
+
+  /* The compact card has room for a bigger target, but not for 30 px: the row
+     is 84 px and the metadata line has to hold the tags as well. */
+  body[data-mode='popup'] .card__actions .icon {
+    width: 28px;
+    height: 28px;
   }
 }

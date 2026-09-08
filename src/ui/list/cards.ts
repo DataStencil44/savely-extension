@@ -39,7 +39,15 @@ function button(label: string, glyph: string, onClick: () => void, pressed?: boo
   return element;
 }
 
-export function createCard(item: SavedItem, index: number, callbacks: CardCallbacks): HTMLLIElement {
+/** How many tags fit on a card before the rest become a "+n" - see `TAG_LIMIT`. */
+export const TAG_LIMIT = { full: 3, popup: 1 } as const;
+
+export function createCard(
+  item: SavedItem,
+  index: number,
+  callbacks: CardCallbacks,
+  tagLimit: number = TAG_LIMIT.full,
+): HTMLLIElement {
   const card = document.createElement('li');
   card.className = 'card';
   card.dataset['id'] = item.id;
@@ -82,7 +90,7 @@ export function createCard(item: SavedItem, index: number, callbacks: CardCallba
 
   const tags = document.createElement('div');
   tags.className = 'card__tags';
-  for (const tag of item.tags.slice(0, 3)) {
+  for (const tag of item.tags.slice(0, tagLimit)) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'chip';
@@ -94,10 +102,10 @@ export function createCard(item: SavedItem, index: number, callbacks: CardCallba
     });
     tags.append(chip);
   }
-  if (item.tags.length > 3) {
+  if (item.tags.length > tagLimit) {
     const more = document.createElement('span');
     more.className = 'chip chip--muted';
-    more.textContent = `+${String(item.tags.length - 3)}`;
+    more.textContent = `+${String(item.tags.length - tagLimit)}`;
     tags.append(more);
   }
   footer.append(tags);
