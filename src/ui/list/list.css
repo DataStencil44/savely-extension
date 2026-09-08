@@ -49,11 +49,12 @@ body {
  * The popup is a different device from the full page: 380 px wide, opened for
  * a moment to grab something off the top of the list. A row there is worth less
  * height than it is worth on a page you sit with - so the card gets one line of
- * metadata with the actions on its right, instead of a row of its own for them:
- * 84 px instead of 128, and five items on screen where three used to fit.
+ * title and one of metadata with the actions on its right, instead of a row of
+ * its own for them: 64 px against the page's 128, and seven items on screen
+ * where three used to fit.
  */
 body[data-mode='popup'] {
-  --row-h: 84px;
+  --row-h: 64px;
 }
 
 body[data-mode='full'] {
@@ -369,10 +370,13 @@ body[data-mode='popup'] .card {
   padding: 8px 10px;
 }
 
+/* The icon is here to tell one site from another at a glance, which takes far
+   less room than the page's tile - so it gets a 20 px icon in a 32 px tile. */
 body[data-mode='popup'] .card__thumb {
-  width: 44px;
-  height: 44px;
-  padding: 10px;
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  border-radius: 6px;
 }
 
 /*
@@ -389,8 +393,11 @@ body[data-mode='popup'] .card__body {
   row-gap: 2px;
 }
 
+/* One line, not two: the second line is what a 64 px row cannot afford, and a
+   title that does not fit ends in an ellipsis rather than taking the room. */
 body[data-mode='popup'] .card__title {
   grid-column: 1 / -1;
+  -webkit-line-clamp: 1;
 }
 
 body[data-mode='popup'] .card__meta {
@@ -611,10 +618,10 @@ body[data-mode='popup'] .card__actions .icon {
     height: 30px;
   }
 
-  /* The compact card has room for a bigger target, but not for 30 px: the row
-     is 84 px and the metadata line has to hold the tags as well. */
+  /* The compact card has room for a slightly bigger target, but not for 30 px:
+     the row is 64 px, and the title above this line needs its share of it. */
   body[data-mode='popup'] .card__actions .icon {
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
   }
 }
