@@ -13,6 +13,7 @@
  */
 import browser from 'webextension-polyfill';
 
+import { announceChange } from './changes';
 import { saveItem, setContent, putFavicon } from './db';
 import { captureFavicon, faviconKey, faviconUrlsOf } from './favicon';
 import { isOutcomeResponse } from './guards';
@@ -90,6 +91,7 @@ async function persist(
     });
 
     await storeFavicon(stub.resolvedUrl, favicon);
+    announceChange();
 
     return {
       ok: true,
@@ -124,6 +126,8 @@ async function persist(
   });
 
   await storeFavicon(article.resolvedUrl, favicon);
+  // Both writes are in - a list open in another tab can read what it now has.
+  announceChange();
 
   return {
     ok: true,

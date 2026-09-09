@@ -11,6 +11,7 @@
  */
 import browser from 'webextension-polyfill';
 
+import { announceChange, onDataChanged } from '@/lib/changes';
 import {
   ImportError,
   backupFileName,
@@ -283,6 +284,7 @@ async function importFile(file: File): Promise<void> {
   // All or nothing: `importDump` runs a single transaction, so a failure
   // halfway through does not leave the database half-imported.
   const outcome = await importDump(plan.dump);
+  announceChange();
   renderReport(file.name, plan, outcome);
   toast(`Imported ${numbers.format(outcome.added + outcome.merged)} items.`);
   await refresh();
@@ -486,6 +488,7 @@ async function restoreFromSnapshot(id: string, createdAt: number): Promise<void>
   if (!ok) return;
 
   const outcome = await restoreSnapshot(id);
+  announceChange();
   toast(
     `Restored: ${numbers.format(outcome.added)} items brought back, ${numbers.format(outcome.merged)} filled in.`,
   );
@@ -547,6 +550,7 @@ async function wipe(): Promise<void> {
   if (!ok) return;
 
   await clearAllData();
+  announceChange();
   toast('The database has been cleared.');
   await refresh();
 }
@@ -649,6 +653,10 @@ function wire(): void {
 
 async function main(): Promise<void> {
   wire();
+  // An import or a sync in another tab changes the counters on this page too.
+  onDataChanged(() => {
+    void refresh();
+  });
   // Not awaited: reading the counters is the slow part of this page, and the
   // theme must not queue behind it.
   void initTheme(showTheme);

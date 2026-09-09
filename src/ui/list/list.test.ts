@@ -12,7 +12,7 @@ import 'fake-indexeddb/auto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import html from './list.html?raw';
-import { deleteDb, getItem, putFavicon, saveItem, setContent } from '@/lib/db';
+import { deleteDb, deleteItem, getItem, putFavicon, saveItem, setContent } from '@/lib/db';
 
 const ITEMS = 300;
 
@@ -25,6 +25,24 @@ const openedTabs: string[] = [];
 
 /** What the theme switcher writes; `storage.sync` in the browser. */
 const settingsStore: Record<string, unknown> = {};
+
+type StorageListener = (
+  changes: Record<string, { newValue?: unknown }>,
+  areaName: string,
+) => void;
+
+/** The `storage.onChanged` listeners the page registered - how another context reaches it. */
+const storageListeners: StorageListener[] = [];
+
+/** A save, a sync or an import in some other context, as the browser reports it. */
+function announceFromElsewhere(): void {
+  for (const listener of storageListeners) {
+    listener(
+      { 'savely:changed': { newValue: { at: Date.now(), source: 'another-context' } } },
+      'local',
+    );
+  }
+}
 
 /**
  * The page markup without `<script>` - we load the module ourselves, once the
@@ -84,8 +102,18 @@ beforeAll(async () => {
             callback();
           },
         },
-        local: { get: (_keys: unknown, callback: (items: unknown) => void) => { callback({}); } },
-        onChanged: { addListener: noop },
+        local: {
+          get: (_keys: unknown, callback: (items: unknown) => void) => {
+            callback({});
+          },
+          // Where `announceChange` writes; nothing here reads it back.
+          set: (_items: unknown, callback: () => void) => {
+            callback();
+          },
+        },
+        onChanged: {
+          addListener: (listener: StorageListener) => storageListeners.push(listener),
+        },
       },
     },
   });
@@ -468,6 +496,29 @@ describe('the full page', () => {
     expect(document.querySelector('.card__title')?.textContent).toBe(first);
     // And Undo is a restoration, not a deletion that never happened.
     await expect(getItem(id)).resolves.toMatchObject({ id });
+  });
+
+  it('picks up what another context saved, and what it deleted', async () => {
+    const saved = await saveItem({
+      url: 'https://elsewhere.example/fresh',
+      title: 'Saved from the toolbar',
+      excerpt: '',
+      wordCount: 100,
+      savedAt: 1_700_000_000_000 + 1_000_000,
+    });
+
+    announceFromElsewhere();
+    await settle(200);
+
+    expect(document.querySelector('.card__title')?.textContent).toBe('Saved from the toolbar');
+    expect(document.querySelector('.tab__count')?.textContent).toBe(String(ITEMS + 1));
+
+    // And the other way: gone elsewhere is gone here, without a reload.
+    await deleteItem(saved.id);
+    announceFromElsewhere();
+    await settle(200);
+
+    expect(document.querySelector('.tab__count')?.textContent).toBe(String(ITEMS));
   });
 });
 

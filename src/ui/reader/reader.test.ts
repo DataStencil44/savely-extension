@@ -37,6 +37,10 @@ const settingsStore = vi.hoisted(() => {
           get: (_keys: unknown, callback: (items: unknown) => void) => {
             callback({});
           },
+          // Where `announceChange` writes; nothing here reads it back.
+          set: (_items: unknown, callback: () => void) => {
+            callback();
+          },
         },
         onChanged: { addListener: noop },
       },

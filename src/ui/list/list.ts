@@ -15,6 +15,7 @@
  */
 import browser from 'webextension-polyfill';
 
+import { announceChange, onDataChanged } from '@/lib/changes';
 import {
   deleteItem,
   getContents,
@@ -281,6 +282,16 @@ function openUrl(url: string): void {
   if (MODE === 'popup') window.close();
 }
 
+/**
+ * An item came back from the database changed. The store puts it on screen;
+ * the announcement is for whoever else is showing it - the other list, the
+ * reader open on this very item.
+ */
+function commit(updated: SavedItem): void {
+  store.replace(updated);
+  announceChange();
+}
+
 const callbacks: CardCallbacks = {
   // No read marking here - the reader decides that after reaching 90% of the content.
   openReader(item) {
@@ -292,15 +303,11 @@ const callbacks: CardCallbacks = {
   },
 
   toggleArchive(item) {
-    void updateItem(item.id, { archived: !item.archived }).then((updated) => {
-      store.replace(updated);
-    });
+    void updateItem(item.id, { archived: !item.archived }).then(commit);
   },
 
   toggleFavorite(item) {
-    void updateItem(item.id, { favorite: !item.favorite }).then((updated) => {
-      store.replace(updated);
-    });
+    void updateItem(item.id, { favorite: !item.favorite }).then(commit);
   },
 
   editTags(item, anchor) {
@@ -312,9 +319,7 @@ const callbacks: CardCallbacks = {
       tags: item.tags,
       known: store.knownTags(),
       apply: (tags) => {
-        void updateItem(item.id, { tags }).then((updated) => {
-          store.replace(updated);
-        });
+        void updateItem(item.id, { tags }).then(commit);
       },
     });
   },
@@ -347,12 +352,17 @@ function removeWithUndo(item: SavedItem): void {
 
   store.remove(item.id);
 
-  const removed = deleteItem(item.id).catch((error: unknown) => {
-    // Nothing awaits this until Undo, and an unhandled rejection would take the
-    // whole handler down with it.
-    console.error('[savely] the deletion did not reach the database:', error);
-    return null;
-  });
+  const removed = deleteItem(item.id)
+    .then((entry) => {
+      announceChange();
+      return entry;
+    })
+    .catch((error: unknown) => {
+      // Nothing awaits this until Undo, and an unhandled rejection would take
+      // the whole handler down with it.
+      console.error('[savely] the deletion did not reach the database:', error);
+      return null;
+    });
   pending.set(item.id, { item, removed });
 
   showToast(el.toast, {
@@ -381,6 +391,7 @@ async function undoRemoval(id: string): Promise<void> {
   if (removed !== null) await restoreItem(removed);
 
   store.restore(entry.item);
+  announceChange();
 }
 
 // ---------------------------------------------------------------------------
@@ -674,6 +685,13 @@ function wireEvents(): void {
 async function main(): Promise<void> {
   wireEvents();
   store.subscribe(onViewChange);
+
+  // A save from the toolbar, an article archived in the reader, an import on
+  // the options page: whatever happened, this list is showing what it read at
+  // startup until it reads again.
+  onDataChanged(() => {
+    void loadAll();
+  });
 
   // Not awaited with the data: the theme is one storage read, and the list must
   // not wait for it - `initTheme` also keeps the page in step with the reader.

@@ -14,6 +14,7 @@
  */
 import browser from 'webextension-polyfill';
 
+import { announceChange } from '../changes';
 import { DB_VERSION, applySync, collectForSync } from '../db';
 
 import { mergeStates } from './merge';
@@ -132,6 +133,10 @@ export async function syncNow(provider: SyncProvider): Promise<SyncReport> {
 
     const merged = mergeStates({ local, remote: payload, schemaVersion: DB_VERSION, now });
     const outcome = await applySync(merged.plan);
+    // The local write is done; the push that follows changes nothing here, so
+    // an open list may as well hear about it now rather than after the network.
+    if (outcome.added + outcome.updated + outcome.deleted > 0) announceChange();
+
     const revision = await provider.push(await buildFiles(merged.payload), remote.revision);
 
     const report: SyncReport = {

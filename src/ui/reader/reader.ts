@@ -9,6 +9,7 @@
  */
 import browser from 'webextension-polyfill';
 
+import { announceChange, onDataChanged } from '@/lib/changes';
 import {
   addHighlight,
   deleteHighlight,
@@ -216,7 +217,7 @@ function onScroll(): void {
 
   if (!markedRead && ratio >= READ_THRESHOLD && item.readAt === null) {
     markedRead = true;
-    void updateItem(item.id, { readAt: Date.now() });
+    void updateItem(item.id, { readAt: Date.now() }).then(announceChange);
   }
 
   if (saveTimer !== undefined) clearTimeout(saveTimer);
@@ -471,6 +472,7 @@ async function toggleFavorite(): Promise<void> {
   if (item === null) return;
   item = await updateItem(item.id, { favorite: !item.favorite });
   renderItemState();
+  announceChange();
   toast(item.favorite ? 'Added to favorites.' : 'Removed from favorites.');
 }
 
@@ -478,7 +480,25 @@ async function toggleArchive(): Promise<void> {
   if (item === null) return;
   item = await updateItem(item.id, { archived: !item.archived });
   renderItemState();
+  announceChange();
   toast(item.archived ? 'Archived.' : 'Restored from the archive.');
+}
+
+/**
+ * The same article, changed somewhere else - archived from the list, or pulled
+ * in by a sync. Only the item is re-read: the article on screen is the one
+ * being read, and re-rendering it would take the reader's place on the page
+ * with it. What this fixes is the header lying, and the next toggle being
+ * computed from a state that is two changes old.
+ */
+async function refreshItemState(): Promise<void> {
+  if (item === null) return;
+  const current = await getItem(item.id);
+  // Deleted elsewhere: what is on screen still reads fine, and saying so in a
+  // toast the reader did not ask for would help nobody.
+  if (current === undefined) return;
+  item = current;
+  renderItemState();
 }
 
 function openList(): void {
@@ -586,6 +606,9 @@ async function main(): Promise<void> {
   });
   window.addEventListener('pagehide', () => {
     void persistProgress();
+  });
+  onDataChanged(() => {
+    void refreshItemState();
   });
 
   const id = new URLSearchParams(location.search).get('id');
