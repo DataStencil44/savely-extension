@@ -32,6 +32,7 @@ import { isSaveResultMessage } from '@/lib/guards';
 import { DEFAULT_SETTINGS, type Theme } from '@/lib/settings';
 import { THEME_ICONS, THEME_LABELS, initTheme, nextTheme, setTheme } from '@/lib/theme';
 import { SAVE_ACTIVE_TAB } from '@/types/messages';
+import { required } from '@/ui/shared/dom';
 import { showToast } from '@/ui/shared/toast';
 
 import { CARD_LAYOUT, createCard, type CardCallbacks } from './cards';
@@ -87,23 +88,24 @@ let favicons = new Map<string, string>();
 
 const el = {
   app: document.body,
-  search: document.querySelector<HTMLInputElement>('#search'),
-  scroller: document.querySelector<HTMLDivElement>('#scroller'),
-  sizer: document.querySelector<HTMLDivElement>('#sizer'),
-  rows: document.querySelector<HTMLUListElement>('#rows'),
-  empty: document.querySelector<HTMLParagraphElement>('#empty'),
+  search: required<HTMLInputElement>('#search'),
+  scroller: required<HTMLDivElement>('#scroller'),
+  sizer: required<HTMLDivElement>('#sizer'),
+  rows: required<HTMLUListElement>('#rows'),
+  empty: required<HTMLParagraphElement>('#empty'),
   tabs: [...document.querySelectorAll<HTMLButtonElement>('.tab')],
-  activeTags: document.querySelector<HTMLDivElement>('#active-tags'),
-  footer: document.querySelector<HTMLElement>('#footer'),
-  seeAll: document.querySelector<HTMLButtonElement>('#see-all'),
-  save: document.querySelector<HTMLButtonElement>('#save'),
-  status: document.querySelector<HTMLParagraphElement>('#status'),
-  toast: document.querySelector<HTMLDivElement>('#toast'),
-  tagEditor: document.querySelector<HTMLDivElement>('#tag-editor'),
-  help: document.querySelector<HTMLDialogElement>('#help-dialog'),
-  helpButton: document.querySelector<HTMLButtonElement>('#help'),
-  optionsButton: document.querySelector<HTMLButtonElement>('#options'),
-  themeButton: document.querySelector<HTMLButtonElement>('#theme'),
+  activeTags: required<HTMLDivElement>('#active-tags'),
+  footer: required<HTMLElement>('#footer'),
+  seeAll: required<HTMLButtonElement>('#see-all'),
+  save: required<HTMLButtonElement>('#save'),
+  status: required<HTMLParagraphElement>('#status'),
+  toast: required<HTMLDivElement>('#toast'),
+  tagEditor: required<HTMLDivElement>('#tag-editor'),
+  help: required<HTMLDialogElement>('#help-dialog'),
+  helpButton: required<HTMLButtonElement>('#help'),
+  optionsButton: required<HTMLButtonElement>('#options'),
+  themeButton: required<HTMLButtonElement>('#theme'),
+  helpClose: required<HTMLButtonElement>('#help-close'),
 };
 
 // ---------------------------------------------------------------------------
@@ -177,8 +179,6 @@ let lastRange = { start: -1, end: -1 };
 
 function render(force = false): void {
   const { scroller, sizer, rows, empty } = el;
-  if (scroller === null || sizer === null || rows === null || empty === null) return;
-
   const { visible, selected } = store.view;
 
   const range = computeWindow({
@@ -219,17 +219,12 @@ function renderCounts(view: ListView): void {
     if (badge !== null) badge.textContent = String(view.counts[id]);
   }
 
-  if (el.footer !== null && el.seeAll !== null) {
-    const hidden = MODE === 'full' || view.matched <= view.visible.length;
-    el.footer.hidden = hidden;
-    el.seeAll.textContent =
-      view.matched > POPUP_LIMIT ? `See all (${String(view.matched)})` : 'See all';
-  }
+  el.footer.hidden = MODE === 'full' || view.matched <= view.visible.length;
+  el.seeAll.textContent =
+    view.matched > POPUP_LIMIT ? `See all (${String(view.matched)})` : 'See all';
 }
 
 function renderActiveTags(): void {
-  if (el.activeTags === null) return;
-
   el.activeTags.replaceChildren();
   el.activeTags.hidden = store.tags.length === 0;
 
@@ -311,7 +306,6 @@ const callbacks: CardCallbacks = {
   },
 
   editTags(item, anchor) {
-    if (el.tagEditor === null) return;
     openTagEditor({
       host: el.tagEditor,
       anchor,
@@ -348,8 +342,6 @@ const callbacks: CardCallbacks = {
  * all.
  */
 function removeWithUndo(item: SavedItem): void {
-  if (el.toast === null) return;
-
   store.remove(item.id);
 
   const removed = deleteItem(item.id)
@@ -409,14 +401,12 @@ function select(position: number): void {
     scroller.scrollTop = target;
     render(true);
   }
-  el.rows?.querySelector<HTMLLIElement>('[aria-selected="true"]')?.focus();
+  el.rows.querySelector<HTMLLIElement>('[aria-selected="true"]')?.focus();
 }
 
 function toggleHelp(): void {
-  const help = el.help;
-  if (help === null) return;
-  if (help.open) help.close();
-  else help.showModal();
+  if (el.help.open) el.help.close();
+  else el.help.showModal();
 }
 
 /**
@@ -427,19 +417,17 @@ function toggleHelp(): void {
  * can be applied without a trailing space.
  */
 function applySearchInput(commitTrailing = false): void {
-  if (el.search === null) return;
-
   const parsed = parseQuery(el.search.value, commitTrailing);
   // Only rewrite the field when something actually left it - otherwise the
   // caret would jump to the end on every keystroke.
   if (parsed.tags.length > 0) el.search.value = parsed.text;
 
-  if (el.scroller !== null) el.scroller.scrollTop = 0;
+  el.scroller.scrollTop = 0;
   store.applyQuery(parsed.query, parsed.tags);
 }
 
 function switchTab(tab: TabId): void {
-  if (el.scroller !== null) el.scroller.scrollTop = 0;
+  el.scroller.scrollTop = 0;
   store.setTab(tab);
 }
 
@@ -449,7 +437,7 @@ function onKeyDown(event: KeyboardEvent): void {
 
   if (event.key === 'Escape') {
     closeTagEditor();
-    if (typing && el.search !== null && target === el.search) {
+    if (typing && target === el.search) {
       el.search.value = '';
       applySearchInput();
       el.search.blur();
@@ -471,7 +459,7 @@ function onKeyDown(event: KeyboardEvent): void {
   switch (event.key) {
     case '/':
       event.preventDefault();
-      el.search?.focus();
+      el.search.focus();
       return;
     case '?':
       event.preventDefault();
@@ -527,8 +515,8 @@ function onKeyDown(event: KeyboardEvent): void {
       break;
     case 't': {
       event.preventDefault();
-      const anchor = el.rows?.querySelector<HTMLElement>('[aria-selected="true"] .card__actions');
-      if (anchor !== null && anchor !== undefined) callbacks.editTags(item, anchor);
+      const anchor = el.rows.querySelector<HTMLElement>('[aria-selected="true"] .card__actions');
+      if (anchor !== null) callbacks.editTags(item, anchor);
       break;
     }
     case 'Delete':
@@ -554,7 +542,6 @@ let theme: Theme = DEFAULT_SETTINGS.theme;
 
 function showTheme(next: Theme): void {
   theme = next;
-  if (el.themeButton === null) return;
 
   const following = THEME_LABELS[nextTheme(next)];
   el.themeButton.textContent = THEME_ICONS[next];
@@ -575,15 +562,12 @@ function cycleTheme(): void {
 // ---------------------------------------------------------------------------
 
 function showStatus(message: string, tone: 'ok' | 'error'): void {
-  if (el.status === null) return;
   el.status.textContent = message;
   el.status.dataset['tone'] = tone;
   el.status.hidden = false;
 }
 
 async function saveCurrentPage(): Promise<void> {
-  if (el.save === null) return;
-
   el.save.disabled = true;
   showStatus('Saving…', 'ok');
 
@@ -619,7 +603,7 @@ function wireEvents(): void {
   });
 
   let searchTimer: number | undefined;
-  el.search?.addEventListener('input', () => {
+  el.search.addEventListener('input', () => {
     if (searchTimer !== undefined) clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       applySearchInput();
@@ -628,7 +612,7 @@ function wireEvents(): void {
 
   // Enter turns the token being typed into a filter without waiting for the
   // space - and without waiting for the debounce either.
-  el.search?.addEventListener('keydown', (event) => {
+  el.search.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
     if (searchTimer !== undefined) clearTimeout(searchTimer);
@@ -636,7 +620,7 @@ function wireEvents(): void {
   });
 
   let frame = 0;
-  el.scroller?.addEventListener('scroll', () => {
+  el.scroller.addEventListener('scroll', () => {
     if (frame !== 0) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
@@ -651,32 +635,32 @@ function wireEvents(): void {
     });
   }
 
-  el.rows?.addEventListener('click', (event) => {
+  el.rows.addEventListener('click', (event) => {
     const card = (event.target as Element | null)?.closest<HTMLLIElement>('.card');
     const position = card?.dataset['index'];
     if (position !== undefined) select(Number(position));
   });
 
-  el.seeAll?.addEventListener('click', () => {
+  el.seeAll.addEventListener('click', () => {
     openUrl(`${extensionUrl('ui/list/list.html')}?full=1`);
   });
 
-  el.save?.addEventListener('click', () => {
+  el.save.addEventListener('click', () => {
     void saveCurrentPage();
   });
 
-  el.helpButton?.addEventListener('click', toggleHelp);
+  el.helpButton.addEventListener('click', toggleHelp);
 
-  el.themeButton?.addEventListener('click', cycleTheme);
+  el.themeButton.addEventListener('click', cycleTheme);
 
   // On Firefox for Android about:addons is the only alternative - hence the
   // entry point to the options page from the list as well (CLAUDE.md 5.6).
-  el.optionsButton?.addEventListener('click', () => {
+  el.optionsButton.addEventListener('click', () => {
     void browser.runtime.openOptionsPage();
   });
 
-  document.querySelector('#help-close')?.addEventListener('click', () => {
-    el.help?.close();
+  el.helpClose.addEventListener('click', () => {
+    el.help.close();
   });
 
   document.addEventListener('keydown', onKeyDown);

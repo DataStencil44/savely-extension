@@ -34,6 +34,7 @@ import {
   type Theme,
 } from '@/lib/settings';
 import { formatDomain, formatReadingTime, formatSavedAt } from '@/ui/shared/format';
+import { required } from '@/ui/shared/dom';
 import { showToast } from '@/ui/shared/toast';
 
 import {
@@ -52,19 +53,19 @@ const PROGRESS_SAVE_MS = 1_200;
 const SCROLL_STEP = 120;
 
 const el = {
-  bar: document.querySelector<HTMLDivElement>('#progress-bar'),
-  article: document.querySelector<HTMLElement>('#article'),
-  back: document.querySelector<HTMLButtonElement>('#back'),
-  favorite: document.querySelector<HTMLButtonElement>('#favorite'),
-  archive: document.querySelector<HTMLButtonElement>('#archive'),
-  original: document.querySelector<HTMLAnchorElement>('#original'),
-  settingsToggle: document.querySelector<HTMLButtonElement>('#settings-toggle'),
-  settings: document.querySelector<HTMLDivElement>('#settings'),
-  fontSizeValue: document.querySelector<HTMLOutputElement>('#font-size-value'),
-  columnValue: document.querySelector<HTMLOutputElement>('#column-value'),
-  remoteImages: document.querySelector<HTMLInputElement>('#remote-images'),
-  popover: document.querySelector<HTMLDivElement>('#popover'),
-  toast: document.querySelector<HTMLDivElement>('#toast'),
+  bar: required<HTMLDivElement>('#progress-bar'),
+  article: required<HTMLElement>('#article'),
+  back: required<HTMLButtonElement>('#back'),
+  favorite: required<HTMLButtonElement>('#favorite'),
+  archive: required<HTMLButtonElement>('#archive'),
+  original: required<HTMLAnchorElement>('#original'),
+  settingsToggle: required<HTMLButtonElement>('#settings-toggle'),
+  settings: required<HTMLDivElement>('#settings'),
+  fontSizeValue: required<HTMLOutputElement>('#font-size-value'),
+  columnValue: required<HTMLOutputElement>('#column-value'),
+  remoteImages: required<HTMLInputElement>('#remote-images'),
+  popover: required<HTMLDivElement>('#popover'),
+  toast: required<HTMLDivElement>('#toast'),
 };
 
 let item: SavedItem | null = null;
@@ -83,11 +84,10 @@ let markedRead = false;
 const TOAST_MS = 2_500;
 
 function toast(message: string): void {
-  if (el.toast !== null) showToast(el.toast, { message, durationMs: TOAST_MS });
+  showToast(el.toast, { message, durationMs: TOAST_MS });
 }
 
 function message(text: string): void {
-  if (el.article === null) return;
   const paragraph = document.createElement('p');
   paragraph.className = 'loading';
   paragraph.textContent = text;
@@ -107,9 +107,9 @@ function applySettings(next: ReaderSettings): void {
   root.dataset['family'] = next.fontFamily;
   root.dataset['theme'] = next.theme;
 
-  if (el.fontSizeValue !== null) el.fontSizeValue.value = String(next.fontSize);
-  if (el.columnValue !== null) el.columnValue.value = String(next.columnWidth);
-  if (el.remoteImages !== null) el.remoteImages.checked = !next.remoteImages;
+  el.fontSizeValue.value = String(next.fontSize);
+  el.columnValue.value = String(next.columnWidth);
+  el.remoteImages.checked = !next.remoteImages;
 
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-font-family]')) {
     button.setAttribute('aria-pressed', String(button.dataset['fontFamily'] === next.fontFamily));
@@ -126,8 +126,6 @@ function applySettings(next: ReaderSettings): void {
  * so turning them back on does not require reloading the page.
  */
 function applyImagePolicy(): void {
-  if (el.article === null) return;
-
   for (const image of el.article.querySelectorAll('img')) {
     const current = image.getAttribute('src');
     if (settings.remoteImages) {
@@ -147,11 +145,10 @@ async function patchSettings(patch: Partial<ReaderSettings>): Promise<void> {
 }
 
 function wireSettings(): void {
-  el.settingsToggle?.addEventListener('click', () => {
-    if (el.settings === null) return;
+  el.settingsToggle.addEventListener('click', () => {
     const open = el.settings.hidden;
     el.settings.hidden = !open;
-    el.settingsToggle?.setAttribute('aria-expanded', String(open));
+    el.settingsToggle.setAttribute('aria-expanded', String(open));
   });
 
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-font-size]')) {
@@ -188,8 +185,8 @@ function wireSettings(): void {
     });
   }
 
-  el.remoteImages?.addEventListener('change', () => {
-    void patchSettings({ remoteImages: !(el.remoteImages?.checked ?? false) });
+  el.remoteImages.addEventListener('change', () => {
+    void patchSettings({ remoteImages: !el.remoteImages.checked });
   });
 
   // A change made in another tab should land here without a reload.
@@ -211,7 +208,7 @@ let saveTimer: number | undefined;
 
 function onScroll(): void {
   const ratio = scrollRatio();
-  if (el.bar !== null) el.bar.style.width = `${String(Math.round(ratio * 100))}%`;
+  el.bar.style.width = `${String(Math.round(ratio * 100))}%`;
 
   if (item === null) return;
 
@@ -257,14 +254,11 @@ function popoverButton(label: string, run: () => void): HTMLButtonElement {
 }
 
 function hidePopover(): void {
-  if (el.popover === null) return;
   el.popover.hidden = true;
   el.popover.replaceChildren();
 }
 
 function showPopover(rect: DOMRect, children: readonly HTMLElement[]): void {
-  if (el.popover === null) return;
-
   el.popover.replaceChildren(...children);
   el.popover.hidden = false;
 
@@ -300,8 +294,6 @@ function anchorOf(highlight: Highlight): Anchor {
 
 /** Repaints one highlight in the content. `false` when the quote is gone. */
 function paint(highlight: Highlight): boolean {
-  if (el.article === null) return false;
-
   const map = buildTextMap(el.article);
   const found = locate(map.text, anchorOf(highlight));
   if (found === null) return false;
@@ -344,13 +336,11 @@ function noteEditor(highlight: Highlight): HTMLElement {
     const note = input.value.trim() === '' ? null : input.value.trim();
     void updateHighlight(highlight.id, { note }).then((updated) => {
       highlights = highlights.map((entry) => (entry.id === updated.id ? updated : entry));
-      if (el.article !== null) {
-        for (const mark of el.article.querySelectorAll<HTMLElement>(
-          `mark[data-highlight="${updated.id}"]`,
-        )) {
-          mark.title = note ?? '';
-          mark.classList.toggle('hl--noted', note !== null);
-        }
+      for (const mark of el.article.querySelectorAll<HTMLElement>(
+        `mark[data-highlight="${updated.id}"]`,
+      )) {
+        mark.title = note ?? '';
+        mark.classList.toggle('hl--noted', note !== null);
       }
       hidePopover();
       toast(note === null ? 'Note removed.' : 'Note saved.');
@@ -365,7 +355,7 @@ function noteEditor(highlight: Highlight): HTMLElement {
 }
 
 async function createHighlight(range: Range, withNote: boolean): Promise<void> {
-  if (el.article === null || item === null) return;
+  if (item === null) return;
 
   const map = buildTextMap(el.article);
   const offsets = offsetsFromRange(map, range);
@@ -403,8 +393,6 @@ async function createHighlight(range: Range, withNote: boolean): Promise<void> {
 }
 
 function onSelectionChange(): void {
-  if (el.article === null) return;
-
   const selection = window.getSelection();
   if (selection === null || selection.isCollapsed || selection.rangeCount === 0) return;
 
@@ -448,7 +436,7 @@ function onArticleClick(event: MouseEvent): void {
     popoverButton('Delete', () => {
       void deleteHighlight(highlight.id).then(() => {
         highlights = highlights.filter((entry) => entry.id !== highlight.id);
-        if (el.article !== null) unwrapHighlight(el.article, highlight.id);
+        unwrapHighlight(el.article, highlight.id);
         hidePopover();
         toast('Highlight removed.');
       });
@@ -462,10 +450,10 @@ function onArticleClick(event: MouseEvent): void {
 
 function renderItemState(): void {
   if (item === null) return;
-  el.favorite?.setAttribute('aria-pressed', String(item.favorite));
-  if (el.favorite !== null) el.favorite.textContent = item.favorite ? '★' : '☆';
-  el.archive?.setAttribute('aria-pressed', String(item.archived));
-  if (el.archive !== null) el.archive.textContent = item.archived ? '↩' : '▤';
+  el.favorite.setAttribute('aria-pressed', String(item.favorite));
+  el.favorite.textContent = item.favorite ? '★' : '☆';
+  el.archive.setAttribute('aria-pressed', String(item.archived));
+  el.archive.textContent = item.archived ? '↩' : '▤';
 }
 
 async function toggleFavorite(): Promise<void> {
@@ -541,7 +529,7 @@ function onKeyDown(event: KeyboardEvent): void {
       if (item !== null) void browser.tabs.create({ url: item.resolvedUrl });
       break;
     case 'Escape':
-      if (el.popover !== null && !el.popover.hidden) {
+      if (!el.popover.hidden) {
         hidePopover();
         return;
       }
@@ -581,16 +569,14 @@ function renderHeader(loaded: SavedItem): HTMLElement {
 }
 
 async function main(): Promise<void> {
-  if (el.article === null) return;
-
   wireSettings();
   applySettings(await loadSettings());
 
-  el.back?.addEventListener('click', openList);
-  el.favorite?.addEventListener('click', () => {
+  el.back.addEventListener('click', openList);
+  el.favorite.addEventListener('click', () => {
     void toggleFavorite();
   });
-  el.archive?.addEventListener('click', () => {
+  el.archive.addEventListener('click', () => {
     void toggleArchive();
   });
   document.addEventListener('keydown', onKeyDown);
@@ -599,7 +585,7 @@ async function main(): Promise<void> {
     setTimeout(onSelectionChange, 150);
   });
   document.addEventListener('mousedown', (event) => {
-    if (el.popover !== null && !el.popover.contains(event.target as Node)) hidePopover();
+    if (!el.popover.contains(event.target as Node)) hidePopover();
   });
   window.addEventListener('scroll', () => {
     requestAnimationFrame(onScroll);
@@ -626,7 +612,7 @@ async function main(): Promise<void> {
   markedRead = loaded.readAt !== null;
 
   document.title = `${loaded.title} - Savely`;
-  if (el.original !== null) el.original.href = loaded.resolvedUrl;
+  el.original.href = loaded.resolvedUrl;
   renderItemState();
 
   const content = await getContent(loaded.id);

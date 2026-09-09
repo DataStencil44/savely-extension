@@ -48,49 +48,49 @@ import {
   type SyncProvider,
 } from '@/lib/sync';
 import { initTheme, setTheme } from '@/lib/theme';
-import { element } from '@/ui/shared/dom';
+import { element, required } from '@/ui/shared/dom';
 import { showToast } from '@/ui/shared/toast';
 
 /** The blob has to outlive the start of the download - the browser copies it asynchronously. */
 const REVOKE_MS = 60_000;
 
 const el = {
-  stats: document.querySelector<HTMLDListElement>('#stats'),
-  storage: document.querySelector<HTMLParagraphElement>('#storage'),
-  openList: document.querySelector<HTMLButtonElement>('#open-list'),
-  exportJson: document.querySelector<HTMLButtonElement>('#export-json'),
-  exportHtml: document.querySelector<HTMLButtonElement>('#export-html'),
-  importFile: document.querySelector<HTMLInputElement>('#import-file'),
-  report: document.querySelector<HTMLDivElement>('#report'),
-  syncProvider: document.querySelector<HTMLSelectElement>('#sync-provider'),
-  syncLocation: document.querySelector<HTMLParagraphElement>('#sync-location'),
-  syncConnect: document.querySelector<HTMLDivElement>('#sync-connect'),
-  syncConnected: document.querySelector<HTMLDivElement>('#sync-connected'),
-  syncSecret: document.querySelector<HTMLInputElement>('#sync-secret'),
-  syncSecretLabel: document.querySelector<HTMLSpanElement>('#sync-secret-label'),
-  syncHelp: document.querySelector<HTMLParagraphElement>('#sync-help'),
-  syncAuthorize: document.querySelector<HTMLButtonElement>('#sync-authorize'),
-  syncTarget: document.querySelector<HTMLParagraphElement>('#sync-target'),
-  syncStatus: document.querySelector<HTMLParagraphElement>('#sync-status'),
-  syncNow: document.querySelector<HTMLButtonElement>('#sync-now'),
-  syncDisconnect: document.querySelector<HTMLButtonElement>('#sync-disconnect'),
-  syncAuto: document.querySelector<HTMLInputElement>('#sync-auto'),
-  snapshots: document.querySelector<HTMLUListElement>('#snapshots'),
-  snapshotNow: document.querySelector<HTMLButtonElement>('#snapshot-now'),
-  wipe: document.querySelector<HTMLButtonElement>('#wipe'),
+  stats: required<HTMLDListElement>('#stats'),
+  storage: required<HTMLParagraphElement>('#storage'),
+  openList: required<HTMLButtonElement>('#open-list'),
+  exportJson: required<HTMLButtonElement>('#export-json'),
+  exportHtml: required<HTMLButtonElement>('#export-html'),
+  importFile: required<HTMLInputElement>('#import-file'),
+  report: required<HTMLDivElement>('#report'),
+  syncProvider: required<HTMLSelectElement>('#sync-provider'),
+  syncLocation: required<HTMLParagraphElement>('#sync-location'),
+  syncConnect: required<HTMLDivElement>('#sync-connect'),
+  syncConnected: required<HTMLDivElement>('#sync-connected'),
+  syncSecret: required<HTMLInputElement>('#sync-secret'),
+  syncSecretLabel: required<HTMLSpanElement>('#sync-secret-label'),
+  syncHelp: required<HTMLParagraphElement>('#sync-help'),
+  syncAuthorize: required<HTMLButtonElement>('#sync-authorize'),
+  syncTarget: required<HTMLParagraphElement>('#sync-target'),
+  syncStatus: required<HTMLParagraphElement>('#sync-status'),
+  syncNow: required<HTMLButtonElement>('#sync-now'),
+  syncDisconnect: required<HTMLButtonElement>('#sync-disconnect'),
+  syncAuto: required<HTMLInputElement>('#sync-auto'),
+  snapshots: required<HTMLUListElement>('#snapshots'),
+  snapshotNow: required<HTMLButtonElement>('#snapshot-now'),
+  wipe: required<HTMLButtonElement>('#wipe'),
   themes: [...document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]')],
-  toast: document.querySelector<HTMLDivElement>('#toast'),
-  dialog: document.querySelector<HTMLDialogElement>('#confirm-dialog'),
-  dialogTitle: document.querySelector<HTMLHeadingElement>('#confirm-title'),
-  dialogText: document.querySelector<HTMLParagraphElement>('#confirm-text'),
-  dialogOk: document.querySelector<HTMLButtonElement>('#confirm-ok'),
-  dialogCancel: document.querySelector<HTMLButtonElement>('#confirm-cancel'),
+  toast: required<HTMLDivElement>('#toast'),
+  dialog: required<HTMLDialogElement>('#confirm-dialog'),
+  dialogTitle: required<HTMLHeadingElement>('#confirm-title'),
+  dialogText: required<HTMLParagraphElement>('#confirm-text'),
+  dialogOk: required<HTMLButtonElement>('#confirm-ok'),
+  dialogCancel: required<HTMLButtonElement>('#confirm-cancel'),
 };
 
 const numbers = new Intl.NumberFormat('en-US');
 
 function toast(message: string): void {
-  if (el.toast !== null) showToast(el.toast, { message });
+  showToast(el.toast, { message });
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +107,6 @@ function statTile(value: number, label: string): HTMLDivElement {
 }
 
 async function renderStats(): Promise<void> {
-  if (el.stats === null) return;
   const stats = await dataStats();
 
   el.stats.replaceChildren(
@@ -138,8 +137,6 @@ function formatBytes(bytes: number): string {
  * magnitude. On older engines (Firefox for Android) it may be missing entirely.
  */
 async function renderStorage(): Promise<void> {
-  if (el.storage === null) return;
-
   const estimate = await navigator.storage?.estimate?.();
   if (estimate?.usage === undefined) {
     el.storage.textContent = 'The browser does not report storage usage.';
@@ -210,15 +207,12 @@ function reportLine(text: string): HTMLParagraphElement {
 }
 
 function renderImportError(message: string): void {
-  if (el.report === null) return;
   el.report.className = 'report report--error';
   el.report.replaceChildren(reportLine(`Nothing was imported: ${message}`));
   el.report.hidden = false;
 }
 
 function renderReport(fileName: string, plan: ImportPlan, outcome: MergeOutcome): void {
-  if (el.report === null) return;
-
   const source = plan.source === 'json' ? 'a Savely backup' : 'a Pocket export';
   const skipped = plan.problems.length + outcome.skipped;
 
@@ -295,7 +289,7 @@ async function importFile(file: File): Promise<void> {
 // ---------------------------------------------------------------------------
 
 function selectedProvider(): SyncProvider | null {
-  return getProvider(el.syncProvider?.value ?? null) ?? null;
+  return getProvider(el.syncProvider.value) ?? null;
 }
 
 function syncStatusLine(
@@ -338,33 +332,26 @@ async function renderSync(): Promise<void> {
 
   // Where the data ends up has to be visible BEFORE anyone pastes a token -
   // not in a help page, not behind a click.
-  if (el.syncLocation !== null) el.syncLocation.textContent = provider.dataLocation;
-  if (el.syncSecretLabel !== null) el.syncSecretLabel.textContent = provider.prompt.label;
-  if (el.syncHelp !== null) el.syncHelp.textContent = provider.prompt.help;
+  el.syncLocation.textContent = provider.dataLocation;
+  el.syncSecretLabel.textContent = provider.prompt.label;
+  el.syncHelp.textContent = provider.prompt.help;
 
-  if (el.syncSecret !== null) {
-    el.syncSecret.placeholder = provider.prompt.placeholder ?? '';
-    // A `picker` provider (a local folder, say) has nothing to paste - only
-    // the button remains.
-    const field = el.syncSecret.closest('label');
-    if (field !== null) field.hidden = provider.prompt.kind !== 'secret';
-  }
-  if (el.syncAuthorize !== null) {
-    el.syncAuthorize.textContent = provider.prompt.kind === 'secret' ? 'Connect' : 'Choose a location';
-  }
+  el.syncSecret.placeholder = provider.prompt.placeholder ?? '';
+  // A `picker` provider (a local folder, say) has nothing to paste - only the
+  // button remains.
+  const field = el.syncSecret.closest('label');
+  if (field !== null) field.hidden = provider.prompt.kind !== 'secret';
+
+  el.syncAuthorize.textContent = provider.prompt.kind === 'secret' ? 'Connect' : 'Choose a location';
 
   const connected = await provider.isConnected();
-  if (el.syncConnect !== null) el.syncConnect.hidden = connected;
-  if (el.syncConnected !== null) el.syncConnected.hidden = !connected;
+  el.syncConnect.hidden = connected;
+  el.syncConnected.hidden = !connected;
   if (!connected) return;
 
-  if (el.syncTarget !== null) {
-    el.syncTarget.textContent = `Destination: ${(await provider.describe()) ?? 'unknown'}`;
-  }
-  if (el.syncAuto !== null) el.syncAuto.checked = state.auto;
-  if (el.syncStatus !== null) {
-    el.syncStatus.textContent = syncStatusLine(state.lastSyncAt, state.lastError, state.lastReport);
-  }
+  el.syncTarget.textContent = `Destination: ${(await provider.describe()) ?? 'unknown'}`;
+  el.syncAuto.checked = state.auto;
+  el.syncStatus.textContent = syncStatusLine(state.lastSyncAt, state.lastError, state.lastReport);
 }
 
 /**
@@ -375,11 +362,11 @@ async function renderSync(): Promise<void> {
 function onAuthorize(): void {
   const provider = selectedProvider();
   if (provider === null) return;
-  const secret = el.syncSecret?.value ?? '';
+  const secret = el.syncSecret.value;
 
   void provider.authorize(secret).then(
     async () => {
-      if (el.syncSecret !== null) el.syncSecret.value = '';
+      el.syncSecret.value = '';
       await saveSyncState({ providerId: provider.id, lastError: null });
       await renderSync();
       toast('Connected. The first sync will push what you have locally.');
@@ -395,10 +382,8 @@ async function runSync(): Promise<void> {
   const provider = selectedProvider();
   if (provider === null) return;
 
-  if (el.syncNow !== null) {
-    el.syncNow.disabled = true;
-    el.syncNow.textContent = 'Syncing\u2026';
-  }
+  el.syncNow.disabled = true;
+  el.syncNow.textContent = 'Syncing\u2026';
 
   try {
     const report = await syncNow(provider);
@@ -408,10 +393,8 @@ async function runSync(): Promise<void> {
   } catch (error) {
     toast(error instanceof Error ? error.message : 'Sync failed.');
   } finally {
-    if (el.syncNow !== null) {
-      el.syncNow.disabled = false;
-      el.syncNow.textContent = 'Sync now';
-    }
+    el.syncNow.disabled = false;
+    el.syncNow.textContent = 'Sync now';
     await refresh();
   }
 }
@@ -448,8 +431,6 @@ function formatWhen(createdAt: number): string {
 }
 
 async function renderSnapshots(): Promise<void> {
-  if (el.snapshots === null) return;
-
   const snapshots = await listSnapshots();
   if (snapshots.length === 0) {
     el.snapshots.replaceChildren(
@@ -511,12 +492,8 @@ async function snapshotNow(): Promise<void> {
  */
 function ask(title: string, message: string): Promise<boolean> {
   const dialog = el.dialog;
-  if (dialog === null || el.dialogOk === null || el.dialogCancel === null) {
-    return Promise.resolve(false);
-  }
-
-  if (el.dialogTitle !== null) el.dialogTitle.textContent = title;
-  if (el.dialogText !== null) el.dialogText.textContent = message;
+  el.dialogTitle.textContent = title;
+  el.dialogText.textContent = message;
 
   return new Promise<boolean>((resolve) => {
     const controller = new AbortController();
@@ -526,10 +503,10 @@ function ask(title: string, message: string): Promise<boolean> {
       resolve(value);
     };
 
-    el.dialogOk?.addEventListener('click', () => {
+    el.dialogOk.addEventListener('click', () => {
       finish(true);
     }, { signal: controller.signal });
-    el.dialogCancel?.addEventListener('click', () => {
+    el.dialogCancel.addEventListener('click', () => {
       finish(false);
     }, { signal: controller.signal });
     // Esc closes the dialog without a click - that is a "no" as well.
@@ -593,26 +570,26 @@ async function refresh(): Promise<void> {
 }
 
 function wire(): void {
-  el.openList?.addEventListener('click', () => {
+  el.openList.addEventListener('click', () => {
     void browser.tabs.create({ url: browser.runtime.getURL('ui/list/list.html?full=1') });
   });
 
-  el.exportJson?.addEventListener('click', () => {
+  el.exportJson.addEventListener('click', () => {
     void exportJson().catch((error: unknown) => {
       console.error('[savely] JSON export failed:', error);
       toast('Could not prepare the backup.');
     });
   });
 
-  el.exportHtml?.addEventListener('click', () => {
+  el.exportHtml.addEventListener('click', () => {
     void exportBookmarks().catch((error: unknown) => {
       console.error('[savely] bookmarks export failed:', error);
       toast('Could not prepare the bookmarks.');
     });
   });
 
-  el.importFile?.addEventListener('change', () => {
-    const file = el.importFile?.files?.[0];
+  el.importFile.addEventListener('change', () => {
+    const file = el.importFile.files?.[0];
     if (file === undefined) return;
 
     void importFile(file)
@@ -622,29 +599,29 @@ function wire(): void {
       })
       .finally(() => {
         // Without this, picking the same file twice would not fire `change`.
-        if (el.importFile !== null) el.importFile.value = '';
+        el.importFile.value = '';
       });
   });
 
-  el.syncProvider?.addEventListener('change', () => {
+  el.syncProvider.addEventListener('change', () => {
     void renderSync();
   });
-  el.syncAuthorize?.addEventListener('click', onAuthorize);
-  el.syncNow?.addEventListener('click', () => {
+  el.syncAuthorize.addEventListener('click', onAuthorize);
+  el.syncNow.addEventListener('click', () => {
     void runSync();
   });
-  el.syncDisconnect?.addEventListener('click', () => {
+  el.syncDisconnect.addEventListener('click', () => {
     void disconnectSync();
   });
-  el.syncAuto?.addEventListener('change', () => {
-    void toggleAutoSync(el.syncAuto?.checked ?? false);
+  el.syncAuto.addEventListener('change', () => {
+    void toggleAutoSync(el.syncAuto.checked);
   });
 
-  el.snapshotNow?.addEventListener('click', () => {
+  el.snapshotNow.addEventListener('click', () => {
     void snapshotNow();
   });
 
-  el.wipe?.addEventListener('click', () => {
+  el.wipe.addEventListener('click', () => {
     void wipe();
   });
 
@@ -660,9 +637,7 @@ async function main(): Promise<void> {
   // Not awaited: reading the counters is the slow part of this page, and the
   // theme must not queue behind it.
   void initTheme(showTheme);
-  if (el.snapshotNow !== null) {
-    el.snapshotNow.title = `We keep the last ${String(SNAPSHOT_LIMIT)} backups.`;
-  }
+  el.snapshotNow.title = `We keep the last ${String(SNAPSHOT_LIMIT)} backups.`;
   await refresh();
 }
 
