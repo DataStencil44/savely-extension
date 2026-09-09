@@ -7,6 +7,8 @@
  */
 import { normalizeTags } from '@/lib/db';
 
+import { tagChip } from './chips';
+
 export interface TagEditorOptions {
   host: HTMLElement;
   anchor: HTMLElement;
@@ -70,15 +72,15 @@ export function openTagEditor(options: TagEditorOptions): void {
       return;
     }
     for (const tag of current) {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'chip chip--removable';
-      chip.textContent = `#${tag} ✕`;
-      chip.title = `Remove the #${tag} tag`;
-      chip.addEventListener('click', () => {
-        commit(current.filter((value) => value !== tag));
-      });
-      chips.append(chip);
+      chips.append(
+        tagChip(tag, {
+          title: `Remove the #${tag} tag`,
+          removable: true,
+          onClick: () => {
+            commit(current.filter((value) => value !== tag));
+          },
+        }),
+      );
     }
   }
 
@@ -90,16 +92,16 @@ export function openTagEditor(options: TagEditorOptions): void {
 
     suggestions.replaceChildren();
     for (const tag of matches) {
-      const suggestion = document.createElement('button');
-      suggestion.type = 'button';
-      suggestion.className = 'chip';
-      suggestion.textContent = `#${tag}`;
-      suggestion.addEventListener('click', () => {
-        input.value = '';
-        commit([...current, tag]);
-        input.focus();
-      });
-      suggestions.append(suggestion);
+      suggestions.append(
+        tagChip(tag, {
+          title: `Add the #${tag} tag`,
+          onClick: () => {
+            input.value = '';
+            commit([...current, tag]);
+            input.focus();
+          },
+        }),
+      );
     }
   }
 

@@ -204,7 +204,7 @@ function scrollRatio(): number {
   return Math.min(1, Math.max(0, root.scrollTop / scrollable));
 }
 
-let saveTimer: number | undefined;
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
 function onScroll(): void {
   const ratio = scrollRatio();
@@ -220,7 +220,7 @@ function onScroll(): void {
   if (saveTimer !== undefined) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     void persistProgress();
-  }, PROGRESS_SAVE_MS) as unknown as number;
+  }, PROGRESS_SAVE_MS);
 }
 
 async function persistProgress(): Promise<void> {

@@ -25,7 +25,7 @@ export interface ToastOptions {
 
 const DEFAULT_MS = 5_000;
 
-let timer: number | undefined;
+let timer: ReturnType<typeof setTimeout> | undefined;
 let expire: (() => void) | undefined;
 
 function hide(host: HTMLElement): void {
@@ -65,7 +65,7 @@ export function showToast(host: HTMLElement, options: ToastOptions): void {
     expire = undefined;
     hide(host);
     pending?.();
-  }, options.durationMs ?? DEFAULT_MS) as unknown as number;
+  }, options.durationMs ?? DEFAULT_MS);
 }
 
 /** Closes the toast immediately, as if the time had run out. */

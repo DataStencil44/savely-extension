@@ -46,7 +46,7 @@ vi.hoisted(() => {
 
 const { addHighlight, deleteDb, deleteItem, getContent, getItemByUrl, listHighlights, saveItem, setContent, updateItem } =
   await import('../db');
-const { syncNow } = await import('./engine');
+const { parseSyncState, syncNow } = await import('./engine');
 const { METADATA_FILE } = await import('./types');
 
 /** An in-memory provider: the whole contract and nothing beyond it. */
@@ -175,5 +175,56 @@ describe('a full pass', () => {
     expect(merged?.favorite).toBe(true);
     // The tags are the union of both sides, even though one side won the item.
     expect(merged?.tags).toEqual(['local', 'remote']);
+  });
+});
+
+describe('the stored state', () => {
+  it('is nothing until it is something, whatever storage holds', () => {
+    expect(parseSyncState(undefined)).toEqual({
+      providerId: null,
+      auto: false,
+      lastSyncAt: null,
+      lastError: null,
+      revision: null,
+      lastReport: null,
+    });
+    expect(parseSyncState('a string where an object was')).toEqual(parseSyncState(undefined));
+  });
+
+  it('reads a report written by this version back unchanged', () => {
+    const report = {
+      at: 1_700_000_000_000,
+      added: 3,
+      updated: 2,
+      deleted: 1,
+      contents: 4,
+      highlights: 5,
+      pushed: 6,
+      conflicts: 0,
+    };
+    expect(parseSyncState({ providerId: 'memory', auto: true, lastReport: report })).toMatchObject({
+      providerId: 'memory',
+      auto: true,
+      lastReport: report,
+    });
+  });
+
+  it('never hands the options page a count that is not one', () => {
+    // What an older version, or a half-finished write, could leave behind. The
+    // page prints these straight into a sentence.
+    const state = parseSyncState({
+      lastReport: { added: 'lots', updated: null, deleted: -4, pushed: 2.7 },
+    });
+
+    expect(state.lastReport).toEqual({
+      at: 0,
+      added: 0,
+      updated: 0,
+      deleted: 0,
+      contents: 0,
+      highlights: 0,
+      pushed: 2,
+      conflicts: 0,
+    });
   });
 });

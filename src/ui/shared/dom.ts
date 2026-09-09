@@ -19,7 +19,11 @@ export function element<K extends keyof HTMLElementTagNameMap>(
 }
 
 /** A `<button type="button">` - the default `submit` is never what a page here means. */
-export function button(className: string, label: string, onClick: () => void): HTMLButtonElement {
+export function button(
+  className: string,
+  label: string,
+  onClick: (event: MouseEvent) => void,
+): HTMLButtonElement {
   const node = element('button', className, label);
   node.type = 'button';
   node.addEventListener('click', onClick);

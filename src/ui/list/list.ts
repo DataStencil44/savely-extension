@@ -36,6 +36,7 @@ import { required } from '@/ui/shared/dom';
 import { showToast } from '@/ui/shared/toast';
 
 import { CARD_LAYOUT, createCard, type CardCallbacks } from './cards';
+import { tagChip } from './chips';
 import { parseQuery } from './query';
 import { ListStore, type ListView, type TabId } from './store';
 import { closeTagEditor, openTagEditor } from './tags';
@@ -229,15 +230,15 @@ function renderActiveTags(): void {
   el.activeTags.hidden = store.tags.length === 0;
 
   for (const tag of store.tags) {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'chip chip--removable';
-    chip.textContent = `#${tag} ✕`;
-    chip.title = `Stop filtering by #${tag}`;
-    chip.addEventListener('click', () => {
-      store.removeTag(tag);
-    });
-    el.activeTags.append(chip);
+    el.activeTags.append(
+      tagChip(tag, {
+        title: `Stop filtering by #${tag}`,
+        removable: true,
+        onClick: () => {
+          store.removeTag(tag);
+        },
+      }),
+    );
   }
 }
 
@@ -602,12 +603,12 @@ function wireEvents(): void {
     render(true);
   });
 
-  let searchTimer: number | undefined;
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
   el.search.addEventListener('input', () => {
     if (searchTimer !== undefined) clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       applySearchInput();
-    }, SEARCH_DEBOUNCE_MS) as unknown as number;
+    }, SEARCH_DEBOUNCE_MS);
   });
 
   // Enter turns the token being typed into a filter without waiting for the

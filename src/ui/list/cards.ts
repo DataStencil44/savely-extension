@@ -7,6 +7,7 @@
 import type { SavedItem } from '@/lib/db';
 
 import { formatDomain, formatReadingTime, formatSavedAt, formatStatus } from '@/ui/shared/format';
+import { moreChip, tagChip } from './chips';
 
 export interface CardCallbacks {
   openReader: (item: SavedItem) => void;
@@ -110,22 +111,19 @@ export function createCard(
   const tags = document.createElement('div');
   tags.className = 'card__tags';
   for (const tag of item.tags.slice(0, layout.tagLimit)) {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'chip';
-    chip.textContent = `#${tag}`;
-    chip.title = `Filter by #${tag}`;
-    chip.addEventListener('click', (event) => {
-      event.stopPropagation();
-      callbacks.filterByTag(tag);
-    });
-    tags.append(chip);
+    tags.append(
+      tagChip(tag, {
+        title: `Filter by #${tag}`,
+        onClick: (event) => {
+          // The card as a whole opens the reader; a chip narrows the list.
+          event.stopPropagation();
+          callbacks.filterByTag(tag);
+        },
+      }),
+    );
   }
   if (item.tags.length > layout.tagLimit) {
-    const more = document.createElement('span');
-    more.className = 'chip chip--muted';
-    more.textContent = `+${String(item.tags.length - layout.tagLimit)}`;
-    tags.append(more);
+    tags.append(moreChip(item.tags.length - layout.tagLimit));
   }
   footer.append(tags);
 

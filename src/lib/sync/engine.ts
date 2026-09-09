@@ -63,20 +63,41 @@ function asNullableString(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null;
 }
 
+function asCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.trunc(value) : 0;
+}
+
+/**
+ * The report of the last run. Every field is a count, so a field that is not
+ * one is nothing - the options page prints these straight into a sentence, and
+ * a `lastReport` left behind by an older version, or by a half-finished write,
+ * would otherwise reach it as `undefined new, NaN updated`.
+ */
+function parseReport(value: unknown): SyncReport | null {
+  if (!isRecord(value)) return null;
+  return {
+    at: asNullableNumber(value['at']) ?? 0,
+    added: asCount(value['added']),
+    updated: asCount(value['updated']),
+    deleted: asCount(value['deleted']),
+    contents: asCount(value['contents']),
+    highlights: asCount(value['highlights']),
+    pushed: asCount(value['pushed']),
+    conflicts: asCount(value['conflicts']),
+  };
+}
+
 /** State from `storage.local` is external data too - validate it (CLAUDE.md 3). */
 export function parseSyncState(value: unknown): SyncState {
   if (!isRecord(value)) return { ...DEFAULT_SYNC_STATE };
 
-  const report = value['lastReport'];
   return {
     providerId: asNullableString(value['providerId']),
     auto: value['auto'] === true,
     lastSyncAt: asNullableNumber(value['lastSyncAt']),
     lastError: asNullableString(value['lastError']),
     revision: asNullableString(value['revision']),
-    // The report exists only to show "what happened last time" - validating it
-    // field by field is pointless, but it must not blow up the view.
-    lastReport: isRecord(report) ? (report as unknown as SyncReport) : null,
+    lastReport: parseReport(value['lastReport']),
   };
 }
 
