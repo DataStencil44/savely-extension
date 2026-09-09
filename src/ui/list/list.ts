@@ -7,6 +7,11 @@
  * Every item (without content) is loaded into memory once and filtered there -
  * metadata for 5000 articles is a few megabytes, which makes switching a tab
  * or a tag instant. Content is read on demand only, for the search index.
+ *
+ * What is on screen and why is `store.ts`; this file is the wiring between it
+ * and the document. The store answers with a view, the page draws the view,
+ * and every change goes back through the store - so there is one place that
+ * decides what the list contains and one place that puts it on screen.
  */
 import browser from 'webextension-polyfill';
 
@@ -23,18 +28,16 @@ import {
 } from '@/lib/db';
 import { faviconKey } from '@/lib/favicon';
 import { isSaveResultMessage } from '@/lib/guards';
-import { SearchIndex } from '@/lib/search';
 import { DEFAULT_SETTINGS, type Theme } from '@/lib/settings';
 import { THEME_ICONS, THEME_LABELS, initTheme, nextTheme, setTheme } from '@/lib/theme';
 import { SAVE_ACTIVE_TAB } from '@/types/messages';
+import { showToast } from '@/ui/shared/toast';
 
 import { CARD_LAYOUT, createCard, type CardCallbacks } from './cards';
 import { parseQuery } from './query';
+import { ListStore, type ListView, type TabId } from './store';
 import { closeTagEditor, openTagEditor } from './tags';
-import { showToast } from '@/ui/shared/toast';
 import { computeWindow, scrollTopFor } from './window';
-
-type TabId = 'inbox' | 'favorite' | 'archive';
 
 const OVERSCAN = 4;
 const POPUP_LIMIT = 20;
@@ -46,21 +49,20 @@ const INDEX_BATCH = 150;
 const MODE: 'popup' | 'full' =
   new URLSearchParams(location.search).get('full') === '1' ? 'full' : 'popup';
 
+const store = new ListStore(MODE === 'popup' ? { limit: POPUP_LIMIT } : {});
+
 interface PendingDelete {
   item: SavedItem;
   /** What the database gave back when it removed the item - what Undo puts in again. */
   removed: Promise<RemovedItem | null>;
 }
 
-const state = {
-  items: [] as SavedItem[],
-  visible: [] as SavedItem[],
-  tab: 'inbox' as TabId,
-  query: '',
-  tags: [] as string[],
-  selected: -1,
-  pending: new Map<string, PendingDelete>(),
-};
+/**
+ * Deletions still inside their undo window. Not in the store: what is on screen
+ * is decided the moment the item goes, and this is only what it would take to
+ * bring it back.
+ */
+const pending = new Map<string, PendingDelete>();
 
 /**
  * Row height is a contract between the CSS and the virtualization: the popup
@@ -79,7 +81,6 @@ function readRowHeight(): number {
 
 let rowHeight = 104;
 
-const index = new SearchIndex();
 /** domain -> `data:` URL, read once at startup; see `loadFavicons`. */
 let favicons = new Map<string, string>();
 
@@ -108,7 +109,7 @@ const el = {
 // Data
 // ---------------------------------------------------------------------------
 
-async function loadItems(): Promise<void> {
+async function loadItems(): Promise<SavedItem[]> {
   const all: SavedItem[] = [];
   let cursor: string | null = null;
 
@@ -118,205 +119,8 @@ async function loadItems(): Promise<void> {
     cursor = page.nextCursor;
   } while (cursor !== null && all.length < 20_000);
 
-  state.items = all;
+  return all;
 }
-
-/**
- * The index is built in two stages: titles and excerpts first (they are in
- * memory, so search works immediately), then - on the full page only - the
- * content read from the database in batches. There is no reason for the popup
- * to pull in megabytes of content just to show 20 items.
- */
-function indexMetadata(): void {
-  index.clear();
-  for (const item of state.items) {
-    index.addItem({ id: item.id, title: item.title, excerpt: item.excerpt });
-  }
-}
-
-async function indexContents(): Promise<void> {
-  const ids = await listContentIds();
-
-  for (let offset = 0; offset < ids.length; offset += INDEX_BATCH) {
-    const batch = await getContents(ids.slice(offset, offset + INDEX_BATCH));
-    for (const content of batch) {
-      index.setText(content.itemId, content.text);
-    }
-    // Yield to the browser so the list stays responsive.
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0);
-    });
-  }
-
-  if (state.query !== '') recompute();
-}
-
-// ---------------------------------------------------------------------------
-// Filtering and rendering
-// ---------------------------------------------------------------------------
-
-function matchesTab(item: SavedItem): boolean {
-  switch (state.tab) {
-    case 'inbox':
-      return !item.archived;
-    case 'favorite':
-      return item.favorite;
-    case 'archive':
-      return item.archived;
-  }
-}
-
-function matchesTags(item: SavedItem): boolean {
-  return state.tags.every((tag) => item.tags.includes(tag));
-}
-
-/**
- * What the search field does with what is in it: `tag:` tokens become filter
- * chips (`parseQuery`), the rest is searched for as words.
- *
- * `commitTrailing` is Enter - it finishes the token being typed, so a filter
- * can be applied without a trailing space.
- */
-function applySearchInput(commitTrailing = false): void {
-  if (el.search === null) return;
-
-  const parsed = parseQuery(el.search.value, commitTrailing);
-  // Only rewrite the field when something actually left it - otherwise the
-  // caret would jump to the end on every keystroke.
-  if (parsed.tags.length > 0) el.search.value = parsed.text;
-  for (const tag of parsed.tags) {
-    if (!state.tags.includes(tag)) state.tags = [...state.tags, tag];
-  }
-
-  state.query = parsed.query;
-  state.selected = -1;
-  if (el.scroller !== null) el.scroller.scrollTop = 0;
-  recompute();
-}
-
-function knownTags(): string[] {
-  const all = new Set<string>();
-  for (const item of state.items) for (const tag of item.tags) all.add(tag);
-  return [...all].sort();
-}
-
-function recompute(): void {
-  const base = state.items.filter((item) => matchesTab(item) && matchesTags(item));
-
-  let visible = base;
-  if (state.query.trim() !== '') {
-    // Search is scoped to the current tab - otherwise an archived result would
-    // show up in the inbox and vice versa.
-    const ranking = new Map(index.search(state.query, 500).map((id, position) => [id, position]));
-    visible = base
-      .filter((item) => ranking.has(item.id))
-      .sort((a, b) => (ranking.get(a.id) ?? 0) - (ranking.get(b.id) ?? 0));
-  }
-
-  state.visible = MODE === 'popup' ? visible.slice(0, POPUP_LIMIT) : visible;
-  state.selected = Math.min(state.selected, state.visible.length - 1);
-
-  renderCounts(visible.length);
-  renderActiveTags();
-  render(true);
-}
-
-function renderCounts(filteredTotal: number): void {
-  const counts: Record<TabId, number> = {
-    inbox: state.items.filter((item) => !item.archived).length,
-    favorite: state.items.filter((item) => item.favorite).length,
-    archive: state.items.filter((item) => item.archived).length,
-  };
-
-  for (const tab of el.tabs) {
-    const id = tab.dataset['tab'] as TabId | undefined;
-    if (id === undefined) continue;
-    tab.setAttribute('aria-selected', String(id === state.tab));
-    const badge = tab.querySelector('.tab__count');
-    if (badge !== null) badge.textContent = String(counts[id]);
-  }
-
-  if (el.footer !== null && el.seeAll !== null) {
-    const hidden = MODE === 'full' || filteredTotal <= state.visible.length;
-    el.footer.hidden = hidden;
-    el.seeAll.textContent =
-      filteredTotal > POPUP_LIMIT
-        ? `See all (${String(filteredTotal)})`
-        : 'See all';
-  }
-}
-
-function renderActiveTags(): void {
-  if (el.activeTags === null) return;
-
-  el.activeTags.replaceChildren();
-  el.activeTags.hidden = state.tags.length === 0;
-
-  for (const tag of state.tags) {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'chip chip--removable';
-    chip.textContent = `#${tag} ✕`;
-    chip.title = `Stop filtering by #${tag}`;
-    chip.addEventListener('click', () => {
-      state.tags = state.tags.filter((value) => value !== tag);
-      recompute();
-    });
-    el.activeTags.append(chip);
-  }
-}
-
-let lastRange = { start: -1, end: -1 };
-
-function render(force = false): void {
-  const { scroller, sizer, rows, empty } = el;
-  if (scroller === null || sizer === null || rows === null || empty === null) return;
-
-  const range = computeWindow({
-    scrollTop: scroller.scrollTop,
-    viewportHeight: scroller.clientHeight,
-    total: state.visible.length,
-    rowHeight,
-    overscan: OVERSCAN,
-  });
-
-  sizer.style.height = `${String(range.totalHeight)}px`;
-  empty.hidden = state.visible.length > 0;
-  if (state.visible.length === 0) empty.textContent = emptyMessage();
-
-  if (!force && range.start === lastRange.start && range.end === lastRange.end) return;
-  lastRange = { start: range.start, end: range.end };
-
-  const cards: HTMLLIElement[] = [];
-  for (let position = range.start; position < range.end; position += 1) {
-    const item = state.visible[position];
-    if (item === undefined) continue;
-    const card = createCard(item, position, callbacks, CARD_LAYOUT[MODE]);
-    if (position === state.selected) card.setAttribute('aria-selected', 'true');
-    applyFavicon(card, item);
-    cards.push(card);
-  }
-
-  rows.replaceChildren(...cards);
-  rows.style.transform = `translateY(${String(range.offsetY)}px)`;
-}
-
-function emptyMessage(): string {
-  if (state.query.trim() !== '') return `No results for \u201c${state.query.trim()}\u201d.`;
-  if (state.tags.length > 0) return 'No item has all of the selected tags.';
-  switch (state.tab) {
-    case 'inbox':
-      return 'Nothing here yet. Save your first page.';
-    case 'favorite':
-      return 'No favorites.';
-    case 'archive':
-      return 'The archive is empty.';
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Site icons
-// ---------------------------------------------------------------------------
 
 /**
  * All the icons in one read, before the first render.
@@ -329,6 +133,128 @@ function emptyMessage(): string {
 async function loadFavicons(): Promise<void> {
   favicons = await listFavicons();
 }
+
+/**
+ * Both reads before either lands in the store: handing the items over is what
+ * draws the list, and a list drawn before the icons arrive would fill them in
+ * a moment later, in front of the reader.
+ */
+async function loadAll(): Promise<void> {
+  const [items] = await Promise.all([loadItems(), loadFavicons()]);
+  store.setItems(items);
+}
+
+/**
+ * The index is built in two stages: titles and excerpts first (the store has
+ * them in memory, so search works immediately), then - on the full page only -
+ * the content read from the database in batches. There is no reason for the
+ * popup to pull in megabytes of content just to show 20 items.
+ */
+async function indexContents(): Promise<void> {
+  const ids = await listContentIds();
+
+  for (let offset = 0; offset < ids.length; offset += INDEX_BATCH) {
+    const batch = await getContents(ids.slice(offset, offset + INDEX_BATCH));
+    for (const content of batch) {
+      store.setContentText(content.itemId, content.text);
+    }
+    // Yield to the browser so the list stays responsive.
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  }
+
+  // A search that ran against titles alone now has the content to go on.
+  if (store.query !== '') store.refresh();
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+
+let lastRange = { start: -1, end: -1 };
+
+function render(force = false): void {
+  const { scroller, sizer, rows, empty } = el;
+  if (scroller === null || sizer === null || rows === null || empty === null) return;
+
+  const { visible, selected } = store.view;
+
+  const range = computeWindow({
+    scrollTop: scroller.scrollTop,
+    viewportHeight: scroller.clientHeight,
+    total: visible.length,
+    rowHeight,
+    overscan: OVERSCAN,
+  });
+
+  sizer.style.height = `${String(range.totalHeight)}px`;
+  empty.hidden = visible.length > 0;
+  if (visible.length === 0) empty.textContent = store.emptyMessage();
+
+  if (!force && range.start === lastRange.start && range.end === lastRange.end) return;
+  lastRange = { start: range.start, end: range.end };
+
+  const cards: HTMLLIElement[] = [];
+  for (let position = range.start; position < range.end; position += 1) {
+    const item = visible[position];
+    if (item === undefined) continue;
+    const card = createCard(item, position, callbacks, CARD_LAYOUT[MODE]);
+    if (position === selected) card.setAttribute('aria-selected', 'true');
+    applyFavicon(card, item);
+    cards.push(card);
+  }
+
+  rows.replaceChildren(...cards);
+  rows.style.transform = `translateY(${String(range.offsetY)}px)`;
+}
+
+function renderCounts(view: ListView): void {
+  for (const tab of el.tabs) {
+    const id = tab.dataset['tab'] as TabId | undefined;
+    if (id === undefined) continue;
+    tab.setAttribute('aria-selected', String(id === store.tab));
+    const badge = tab.querySelector('.tab__count');
+    if (badge !== null) badge.textContent = String(view.counts[id]);
+  }
+
+  if (el.footer !== null && el.seeAll !== null) {
+    const hidden = MODE === 'full' || view.matched <= view.visible.length;
+    el.footer.hidden = hidden;
+    el.seeAll.textContent =
+      view.matched > POPUP_LIMIT ? `See all (${String(view.matched)})` : 'See all';
+  }
+}
+
+function renderActiveTags(): void {
+  if (el.activeTags === null) return;
+
+  el.activeTags.replaceChildren();
+  el.activeTags.hidden = store.tags.length === 0;
+
+  for (const tag of store.tags) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip chip--removable';
+    chip.textContent = `#${tag} ✕`;
+    chip.title = `Stop filtering by #${tag}`;
+    chip.addEventListener('click', () => {
+      store.removeTag(tag);
+    });
+    el.activeTags.append(chip);
+  }
+}
+
+/** The store changed something; everything the change could have touched redraws. */
+function onViewChange(view: ListView): void {
+  renderCounts(view);
+  renderActiveTags();
+  render(true);
+}
+
+// ---------------------------------------------------------------------------
+// Site icons
+// ---------------------------------------------------------------------------
 
 function applyFavicon(card: HTMLLIElement, item: SavedItem): void {
   const domain = faviconKey(item.url);
@@ -344,12 +270,6 @@ function applyFavicon(card: HTMLLIElement, item: SavedItem): void {
 // ---------------------------------------------------------------------------
 // Item actions
 // ---------------------------------------------------------------------------
-
-function replaceItem(updated: SavedItem): void {
-  state.items = state.items.map((item) => (item.id === updated.id ? updated : item));
-  index.addItem({ id: updated.id, title: updated.title, excerpt: updated.excerpt });
-  recompute();
-}
 
 function extensionUrl(path: string): string {
   return browser.runtime.getURL(path);
@@ -372,11 +292,15 @@ const callbacks: CardCallbacks = {
   },
 
   toggleArchive(item) {
-    void updateItem(item.id, { archived: !item.archived }).then(replaceItem);
+    void updateItem(item.id, { archived: !item.archived }).then((updated) => {
+      store.replace(updated);
+    });
   },
 
   toggleFavorite(item) {
-    void updateItem(item.id, { favorite: !item.favorite }).then(replaceItem);
+    void updateItem(item.id, { favorite: !item.favorite }).then((updated) => {
+      store.replace(updated);
+    });
   },
 
   editTags(item, anchor) {
@@ -386,9 +310,11 @@ const callbacks: CardCallbacks = {
       anchor,
       key: item.id,
       tags: item.tags,
-      known: knownTags(),
+      known: store.knownTags(),
       apply: (tags) => {
-        void updateItem(item.id, { tags }).then(replaceItem);
+        void updateItem(item.id, { tags }).then((updated) => {
+          store.replace(updated);
+        });
       },
     });
   },
@@ -398,8 +324,7 @@ const callbacks: CardCallbacks = {
   },
 
   filterByTag(tag) {
-    if (!state.tags.includes(tag)) state.tags = [...state.tags, tag];
-    recompute();
+    store.addTag(tag);
   },
 };
 
@@ -420,9 +345,7 @@ const callbacks: CardCallbacks = {
 function removeWithUndo(item: SavedItem): void {
   if (el.toast === null) return;
 
-  state.items = state.items.filter((entry) => entry.id !== item.id);
-  index.remove(item.id);
-  recompute();
+  store.remove(item.id);
 
   const removed = deleteItem(item.id).catch((error: unknown) => {
     // Nothing awaits this until Undo, and an unhandled rejection would take the
@@ -430,7 +353,7 @@ function removeWithUndo(item: SavedItem): void {
     console.error('[savely] the deletion did not reach the database:', error);
     return null;
   });
-  state.pending.set(item.id, { item, removed });
+  pending.set(item.id, { item, removed });
 
   showToast(el.toast, {
     message: `Deleted “${item.title === '' ? item.url : item.title}”`,
@@ -443,24 +366,21 @@ function removeWithUndo(item: SavedItem): void {
     },
     onExpire: () => {
       // Nothing to carry out any more - the deletion is long done.
-      state.pending.delete(item.id);
+      pending.delete(item.id);
     },
   });
 }
 
 /** Puts the item back where it was, in the database first and then on screen. */
 async function undoRemoval(id: string): Promise<void> {
-  const pending = state.pending.get(id);
-  if (pending === undefined) return;
-  state.pending.delete(id);
+  const entry = pending.get(id);
+  if (entry === undefined) return;
+  pending.delete(id);
 
-  const removed = await pending.removed;
+  const removed = await entry.removed;
   if (removed !== null) await restoreItem(removed);
 
-  const { item } = pending;
-  state.items = [...state.items, item].sort((a, b) => b.savedAt - a.savedAt);
-  index.addItem({ id: item.id, title: item.title, excerpt: item.excerpt });
-  recompute();
+  store.restore(entry.item);
 }
 
 // ---------------------------------------------------------------------------
@@ -469,19 +389,16 @@ async function undoRemoval(id: string): Promise<void> {
 
 function select(position: number): void {
   const scroller = el.scroller;
-  if (scroller === null || state.visible.length === 0) return;
+  if (scroller === null || store.view.visible.length === 0) return;
 
-  state.selected = Math.min(Math.max(position, 0), state.visible.length - 1);
+  const selected = store.select(position);
 
-  const target = scrollTopFor(state.selected, scroller.scrollTop, scroller.clientHeight, rowHeight);
-  if (target !== null) scroller.scrollTop = target;
-
-  render(true);
+  const target = scrollTopFor(selected, scroller.scrollTop, scroller.clientHeight, rowHeight);
+  if (target !== null) {
+    scroller.scrollTop = target;
+    render(true);
+  }
   el.rows?.querySelector<HTMLLIElement>('[aria-selected="true"]')?.focus();
-}
-
-function selectedItem(): SavedItem | undefined {
-  return state.visible[state.selected];
 }
 
 function toggleHelp(): void {
@@ -489,6 +406,30 @@ function toggleHelp(): void {
   if (help === null) return;
   if (help.open) help.close();
   else help.showModal();
+}
+
+/**
+ * What the search field does with what is in it: `tag:` tokens become filter
+ * chips (`parseQuery`), the rest is searched for as words.
+ *
+ * `commitTrailing` is Enter - it finishes the token being typed, so a filter
+ * can be applied without a trailing space.
+ */
+function applySearchInput(commitTrailing = false): void {
+  if (el.search === null) return;
+
+  const parsed = parseQuery(el.search.value, commitTrailing);
+  // Only rewrite the field when something actually left it - otherwise the
+  // caret would jump to the end on every keystroke.
+  if (parsed.tags.length > 0) el.search.value = parsed.text;
+
+  if (el.scroller !== null) el.scroller.scrollTop = 0;
+  store.applyQuery(parsed.query, parsed.tags);
+}
+
+function switchTab(tab: TabId): void {
+  if (el.scroller !== null) el.scroller.scrollTop = 0;
+  store.setTab(tab);
 }
 
 function onKeyDown(event: KeyboardEvent): void {
@@ -513,7 +454,8 @@ function onKeyDown(event: KeyboardEvent): void {
   // reader and deleted nothing. Whoever tabbed to a button meant that button.
   if ((event.key === 'Enter' || event.key === ' ') && target instanceof HTMLButtonElement) return;
 
-  const item = selectedItem();
+  const view = store.view;
+  const item = store.selectedItem();
 
   switch (event.key) {
     case '/':
@@ -526,11 +468,11 @@ function onKeyDown(event: KeyboardEvent): void {
       return;
     case 'ArrowDown':
       event.preventDefault();
-      select(state.selected + 1);
+      select(view.selected + 1);
       return;
     case 'ArrowUp':
       event.preventDefault();
-      select(state.selected - 1);
+      select(view.selected - 1);
       return;
     case 'Home':
       event.preventDefault();
@@ -538,7 +480,7 @@ function onKeyDown(event: KeyboardEvent): void {
       return;
     case 'End':
       event.preventDefault();
-      select(state.visible.length - 1);
+      select(view.visible.length - 1);
       return;
     case '1':
       switchTab('inbox');
@@ -588,13 +530,6 @@ function onKeyDown(event: KeyboardEvent): void {
   }
 }
 
-function switchTab(tab: TabId): void {
-  state.tab = tab;
-  state.selected = -1;
-  if (el.scroller !== null) el.scroller.scrollTop = 0;
-  recompute();
-}
-
 // ---------------------------------------------------------------------------
 // Theme
 // ---------------------------------------------------------------------------
@@ -639,7 +574,7 @@ async function saveCurrentPage(): Promise<void> {
   if (el.save === null) return;
 
   el.save.disabled = true;
-  showStatus('Saving\u2026', 'ok');
+  showStatus('Saving…', 'ok');
 
   try {
     const response: unknown = await browser.runtime.sendMessage({ type: SAVE_ACTIVE_TAB });
@@ -648,12 +583,8 @@ async function saveCurrentPage(): Promise<void> {
       return;
     }
     showStatus(response.message, response.ok && !response.degraded ? 'ok' : 'error');
-    if (response.ok) {
-      // A save from a new site also brings a new icon.
-      await Promise.all([loadItems(), loadFavicons()]);
-      indexMetadata();
-      recompute();
-    }
+    // A save from a new site also brings a new icon.
+    if (response.ok) await loadAll();
   } catch {
     showStatus('Could not reach the extension background.', 'error');
   } finally {
@@ -738,19 +669,17 @@ function wireEvents(): void {
   });
 
   document.addEventListener('keydown', onKeyDown);
-
 }
 
 async function main(): Promise<void> {
   wireEvents();
+  store.subscribe(onViewChange);
 
   // Not awaited with the data: the theme is one storage read, and the list must
   // not wait for it - `initTheme` also keeps the page in step with the reader.
   void initTheme(showTheme);
 
-  await Promise.all([loadItems(), loadFavicons()]);
-  indexMetadata();
-  recompute();
+  await loadAll();
 
   if (MODE === 'full') void indexContents();
 }
