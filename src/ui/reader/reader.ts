@@ -10,17 +10,7 @@
 import browser from 'webextension-polyfill';
 
 import { announceChange, onDataChanged } from '@/lib/changes';
-import {
-  addHighlight,
-  deleteHighlight,
-  getContent,
-  getItem,
-  listHighlights,
-  updateHighlight,
-  updateItem,
-  type Highlight,
-  type SavedItem,
-} from '@/lib/db';
+import { getContent, getItem, updateItem, type SavedItem } from '@/lib/db';
 import { sanitizeToFragment } from '@/lib/sanitize';
 import {
   COLUMN_WIDTH_RANGE,
@@ -34,18 +24,11 @@ import {
   type Theme,
 } from '@/lib/settings';
 import { formatDomain, formatReadingTime, formatSavedAt } from '@/ui/shared/format';
+
+import { Annotations } from './annotations';
 import { required } from '@/ui/shared/dom';
 import { showToast } from '@/ui/shared/toast';
 
-import {
-  buildTextMap,
-  locate,
-  makeAnchor,
-  offsetsFromRange,
-  unwrapHighlight,
-  wrapRange,
-  type Anchor,
-} from './highlight';
 
 /** Past this fraction of the content we consider the article read. */
 const READ_THRESHOLD = 0.9;
@@ -70,8 +53,13 @@ const el = {
 
 let item: SavedItem | null = null;
 let settings: ReaderSettings = { ...DEFAULT_SETTINGS };
-let highlights: Highlight[] = [];
 let markedRead = false;
+
+const annotations = new Annotations({
+  article: el.article,
+  popover: el.popover,
+  notify: toast,
+});
 
 // ---------------------------------------------------------------------------
 // Small UI helpers
@@ -237,214 +225,6 @@ function restoreScroll(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Selection and highlights
-// ---------------------------------------------------------------------------
-
-function popoverButton(label: string, run: () => void): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'popover__action';
-  button.textContent = label;
-  button.addEventListener('mousedown', (event) => {
-    // `mousedown`, because clicking the button clears the selection before `click`.
-    event.preventDefault();
-    run();
-  });
-  return button;
-}
-
-function hidePopover(): void {
-  el.popover.hidden = true;
-  el.popover.replaceChildren();
-}
-
-function showPopover(rect: DOMRect, children: readonly HTMLElement[]): void {
-  el.popover.replaceChildren(...children);
-  el.popover.hidden = false;
-
-  const width = el.popover.offsetWidth;
-  const left = Math.min(
-    Math.max(8, rect.left + rect.width / 2 - width / 2),
-    document.documentElement.clientWidth - width - 8,
-  );
-  const above = rect.top - el.popover.offsetHeight - 8;
-  el.popover.style.left = `${String(left)}px`;
-  el.popover.style.top = `${String(above > 8 ? above : rect.bottom + 8)}px`;
-}
-
-async function copyText(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast('Copied.');
-  } catch {
-    toast('The browser refused to copy.');
-  }
-}
-
-/** Database record -> anchor for the highlight module (where the quote is called `quote`). */
-function anchorOf(highlight: Highlight): Anchor {
-  return {
-    start: highlight.start,
-    end: highlight.end,
-    quote: highlight.text,
-    prefix: highlight.prefix,
-    suffix: highlight.suffix,
-  };
-}
-
-/** Repaints one highlight in the content. `false` when the quote is gone. */
-function paint(highlight: Highlight): boolean {
-  const map = buildTextMap(el.article);
-  const found = locate(map.text, anchorOf(highlight));
-  if (found === null) return false;
-
-  const marks = wrapRange(map, found, highlight.id);
-  for (const mark of marks) {
-    if (highlight.note !== null && highlight.note !== '') mark.title = highlight.note;
-    mark.classList.toggle('hl--noted', highlight.note !== null && highlight.note !== '');
-  }
-  return marks.length > 0;
-}
-
-async function restoreHighlights(itemId: string): Promise<void> {
-  highlights = await listHighlights(itemId);
-
-  const lost = highlights.filter((highlight) => !paint(highlight)).length;
-  if (lost > 0) {
-    toast(`Could not restore ${String(lost)} highlight(s) - the content has changed.`);
-  }
-}
-
-function noteEditor(highlight: Highlight): HTMLElement {
-  const form = document.createElement('form');
-  form.className = 'popover__note';
-
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'popover__input';
-  input.placeholder = 'Note';
-  input.value = highlight.note ?? '';
-  input.setAttribute('aria-label', 'Note for the selection');
-
-  const save = document.createElement('button');
-  save.type = 'submit';
-  save.className = 'popover__action';
-  save.textContent = 'Save';
-
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const note = input.value.trim() === '' ? null : input.value.trim();
-    void updateHighlight(highlight.id, { note }).then((updated) => {
-      highlights = highlights.map((entry) => (entry.id === updated.id ? updated : entry));
-      for (const mark of el.article.querySelectorAll<HTMLElement>(
-        `mark[data-highlight="${updated.id}"]`,
-      )) {
-        mark.title = note ?? '';
-        mark.classList.toggle('hl--noted', note !== null);
-      }
-      hidePopover();
-      toast(note === null ? 'Note removed.' : 'Note saved.');
-    });
-  });
-
-  form.append(input, save);
-  setTimeout(() => {
-    input.focus();
-  }, 0);
-  return form;
-}
-
-async function createHighlight(range: Range, withNote: boolean): Promise<void> {
-  if (item === null) return;
-
-  const map = buildTextMap(el.article);
-  const offsets = offsetsFromRange(map, range);
-  if (offsets === null) {
-    toast('This selection cannot be anchored.');
-    return;
-  }
-
-  const anchor = makeAnchor(map, offsets);
-  const highlight = await addHighlight({
-    itemId: item.id,
-    text: anchor.quote,
-    start: anchor.start,
-    end: anchor.end,
-    prefix: anchor.prefix,
-    suffix: anchor.suffix,
-  });
-
-  highlights = [...highlights, highlight];
-  window.getSelection()?.removeAllRanges();
-  paint(highlight);
-
-  if (!withNote) {
-    hidePopover();
-    toast('Highlighted.');
-    return;
-  }
-
-  const mark = el.article.querySelector<HTMLElement>(`mark[data-highlight="${highlight.id}"]`);
-  if (mark === null) {
-    hidePopover();
-    return;
-  }
-  showPopover(mark.getBoundingClientRect(), [noteEditor(highlight)]);
-}
-
-function onSelectionChange(): void {
-  const selection = window.getSelection();
-  if (selection === null || selection.isCollapsed || selection.rangeCount === 0) return;
-
-  const range = selection.getRangeAt(0);
-  if (!el.article.contains(range.commonAncestorContainer)) return;
-
-  const text = selection.toString().trim();
-  if (text === '') return;
-
-  showPopover(range.getBoundingClientRect(), [
-    popoverButton('Highlight', () => {
-      void createHighlight(range.cloneRange(), false);
-    }),
-    popoverButton('Copy', () => {
-      void copyText(text);
-      hidePopover();
-    }),
-    popoverButton('Note', () => {
-      void createHighlight(range.cloneRange(), true);
-    }),
-  ]);
-}
-
-function onArticleClick(event: MouseEvent): void {
-  const mark = (event.target as Element | null)?.closest<HTMLElement>('mark[data-highlight]');
-  if (mark === null || mark === undefined) return;
-
-  const id = mark.dataset['highlight'];
-  const highlight = highlights.find((entry) => entry.id === id);
-  if (highlight === undefined) return;
-
-  event.preventDefault();
-  showPopover(mark.getBoundingClientRect(), [
-    popoverButton('Note', () => {
-      showPopover(mark.getBoundingClientRect(), [noteEditor(highlight)]);
-    }),
-    popoverButton('Copy', () => {
-      void copyText(highlight.text);
-      hidePopover();
-    }),
-    popoverButton('Delete', () => {
-      void deleteHighlight(highlight.id).then(() => {
-        highlights = highlights.filter((entry) => entry.id !== highlight.id);
-        unwrapHighlight(el.article, highlight.id);
-        hidePopover();
-        toast('Highlight removed.');
-      });
-    }),
-  ]);
-}
-
-// ---------------------------------------------------------------------------
 // Item actions and keyboard
 // ---------------------------------------------------------------------------
 
@@ -505,7 +285,7 @@ async function closeTab(): Promise<void> {
 function onKeyDown(event: KeyboardEvent): void {
   const target = event.target;
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-    if (event.key === 'Escape') hidePopover();
+    if (event.key === 'Escape') annotations.hide();
     return;
   }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -529,8 +309,8 @@ function onKeyDown(event: KeyboardEvent): void {
       if (item !== null) void browser.tabs.create({ url: item.resolvedUrl });
       break;
     case 'Escape':
-      if (!el.popover.hidden) {
-        hidePopover();
+      if (annotations.isOpen) {
+        annotations.hide();
         return;
       }
       void closeTab();
@@ -582,10 +362,12 @@ async function main(): Promise<void> {
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('selectionchange', () => {
     // A short delay: `selectionchange` also fires while dragging the mouse.
-    setTimeout(onSelectionChange, 150);
+    setTimeout(() => {
+      annotations.onSelectionChange();
+    }, 150);
   });
   document.addEventListener('mousedown', (event) => {
-    if (!el.popover.contains(event.target as Node)) hidePopover();
+    if (!annotations.contains(event.target as Node)) annotations.hide();
   });
   window.addEventListener('scroll', () => {
     requestAnimationFrame(onScroll);
@@ -633,11 +415,13 @@ async function main(): Promise<void> {
   const body = document.createElement('div');
   body.className = 'content';
   body.append(sanitizeToFragment(content.html, loaded.resolvedUrl));
-  body.addEventListener('click', onArticleClick);
+  body.addEventListener('click', (event) => {
+    annotations.onArticleClick(event);
+  });
   el.article.append(body);
 
   applyImagePolicy();
-  await restoreHighlights(loaded.id);
+  await annotations.load(loaded.id);
 
   restoreScroll();
   // Images load later and change the page height - once they are in, we jump
