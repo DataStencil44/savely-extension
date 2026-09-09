@@ -6,7 +6,7 @@
  */
 import type { SavedItem } from '@/lib/db';
 
-import { formatDomain, formatReadingTime, formatSavedAt, formatStatus } from './format';
+import { formatDomain, formatReadingTime, formatSavedAt, formatStatus } from '@/ui/shared/format';
 
 export interface CardCallbacks {
   openReader: (item: SavedItem) => void;

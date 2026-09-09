@@ -1,3 +1,5 @@
+@import '../shared/toast.css';
+
 /*
  * The reader. Three things at once: typography (a single ~68-character
  * column), four themes and three typefaces - all through variables, so that
@@ -434,25 +436,13 @@ mark.hl--noted {
 
 /* --- toast --- */
 
+/* The shared rules are in `../shared/toast.css`; the article is set in a serif
+   with loosened letter-spacing, and a notice about the interface should not be. */
 .toast {
-  position: fixed;
-  left: 50%;
   bottom: 20px;
-  z-index: 6;
-  max-width: calc(100vw - 32px);
   padding: 8px 14px;
-  transform: translateX(-50%);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  font-size: 13px;
   letter-spacing: normal;
-}
-
-.toast[hidden] {
-  display: none;
 }
 
 @media (max-width: 480px) {

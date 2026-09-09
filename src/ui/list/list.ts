@@ -31,7 +31,7 @@ import { SAVE_ACTIVE_TAB } from '@/types/messages';
 import { CARD_LAYOUT, createCard, type CardCallbacks } from './cards';
 import { parseQuery } from './query';
 import { closeTagEditor, openTagEditor } from './tags';
-import { showToast } from './toast';
+import { showToast } from '@/ui/shared/toast';
 import { computeWindow, scrollTopFor } from './window';
 
 type TabId = 'inbox' | 'favorite' | 'archive';

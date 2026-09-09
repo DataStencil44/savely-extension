@@ -1,0 +1,50 @@
+/*
+ * The toast, for all three pages - one set of rules behind `showToast`
+ * (`toast.ts`), which is what builds these elements.
+ *
+ * There were three copies of this, one per stylesheet, and they had already
+ * drifted: the reader's was missing the flex row, so the day it showed a toast
+ * with an action the button would have landed under the message instead of
+ * beside it.
+ *
+ * The two variables are written with fallbacks because the reader keeps its own,
+ * typographic palette (`--surface`, no `--shadow`) rather than `theme.css`.
+ * Anything a page legitimately differs on - placement, the font on a page set
+ * in a serif - it still overrides after the import.
+ */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 24px);
+  padding: 8px 12px;
+  transform: translateX(-50%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated, var(--surface));
+  box-shadow: var(--shadow, 0 8px 24px rgb(0 0 0 / 0.18));
+  font-size: 13px;
+}
+
+.toast[hidden] {
+  display: none;
+}
+
+.toast__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast__action {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}

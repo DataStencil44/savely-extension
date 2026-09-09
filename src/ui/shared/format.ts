@@ -1,5 +1,9 @@
 /**
- * Formatting for the list cards. Pure functions - testable without a browser.
+ * How a saved item is put into words - the domain, the date, the reading time,
+ * the state. Shared, because the list card and the reader's header describe
+ * the same item and must not describe it differently.
+ *
+ * Pure functions: testable without a browser.
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000;

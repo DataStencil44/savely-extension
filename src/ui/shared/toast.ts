@@ -1,5 +1,9 @@
 /**
- * One toast at a time, with an optional action (here: undoing a deletion).
+ * One toast at a time, with an optional action (the list's Undo).
+ *
+ * The host element is passed in rather than looked up, so the three pages can
+ * each place their own `.toast` in their own markup and still get the same
+ * behaviour and the same timing out of it.
  *
  * The toast counts down how long the action stays on offer, not how long until
  * anything happens - a deletion is already in the database by the time the

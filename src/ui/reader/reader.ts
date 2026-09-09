@@ -32,7 +32,8 @@ import {
   type ReaderSettings,
   type Theme,
 } from '@/lib/settings';
-import { formatDomain, formatReadingTime, formatSavedAt } from '@/ui/list/format';
+import { formatDomain, formatReadingTime, formatSavedAt } from '@/ui/shared/format';
+import { showToast } from '@/ui/shared/toast';
 
 import {
   buildTextMap,
@@ -74,16 +75,14 @@ let markedRead = false;
 // Small UI helpers
 // ---------------------------------------------------------------------------
 
-let toastTimer: number | undefined;
+/**
+ * Shorter than the list's five seconds: a toast here only ever confirms
+ * something that already happened, and there is nothing to take back.
+ */
+const TOAST_MS = 2_500;
 
 function toast(message: string): void {
-  if (el.toast === null) return;
-  el.toast.textContent = message;
-  el.toast.hidden = false;
-  if (toastTimer !== undefined) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    if (el.toast !== null) el.toast.hidden = true;
-  }, 2_500) as unknown as number;
+  if (el.toast !== null) showToast(el.toast, { message, durationMs: TOAST_MS });
 }
 
 function message(text: string): void {

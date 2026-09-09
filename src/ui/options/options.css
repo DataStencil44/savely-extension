@@ -5,7 +5,8 @@
  * 360 px, because on
  * Firefoksie na Androidzie to jedyne miejsce z eksportem i importem.
  */
-@import '../theme.css';
+@import '../shared/theme.css';
+@import '../shared/toast.css';
 
 * {
   box-sizing: border-box;
@@ -310,36 +311,7 @@ code {
   font-size: 12px;
 }
 
-/* --- toast i dialog --- */
-
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: 20px;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: calc(100vw - 32px);
-  padding: 10px 14px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-}
-
-.toast[hidden] {
-  display: none;
-}
-
-.toast__action {
-  padding: 2px 8px;
-  background: none;
-  color: var(--accent);
-  border: none;
-  font: inherit;
-  cursor: pointer;
-}
+/* --- dialog --- */
 
 .dialog {
   max-width: 420px;

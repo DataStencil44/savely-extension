@@ -47,7 +47,8 @@ import {
   type SyncProvider,
 } from '@/lib/sync';
 import { initTheme, setTheme } from '@/lib/theme';
-import { showToast } from '@/ui/list/toast';
+import { element } from '@/ui/shared/dom';
+import { showToast } from '@/ui/shared/toast';
 
 /** The blob has to outlive the start of the download - the browser copies it asynchronously. */
 const REVOKE_MS = 60_000;
@@ -89,17 +90,6 @@ const numbers = new Intl.NumberFormat('en-US');
 
 function toast(message: string): void {
   if (el.toast !== null) showToast(el.toast, { message });
-}
-
-function element<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className: string,
-  content?: string,
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  node.className = className;
-  if (content !== undefined) node.textContent = content;
-  return node;
 }
 
 // ---------------------------------------------------------------------------

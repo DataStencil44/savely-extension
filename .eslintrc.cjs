@@ -91,6 +91,35 @@ module.exports = {
   },
   overrides: [
     {
+      // Anything two pages need lives in `src/ui/shared/`. Without this rule the
+      // shared module ends up in whichever page happened to need it first, and
+      // the other pages import *that* - which is how `toast.ts` and `format.ts`
+      // came to live in `ui/list/` and be imported by the options page and the
+      // reader.
+      files: ['src/ui/**/*.ts'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: [
+                  '@/ui/list/*',
+                  '@/ui/reader/*',
+                  '@/ui/options/*',
+                  '../list/*',
+                  '../reader/*',
+                  '../options/*',
+                ],
+                message:
+                  'A page must not import from another page. Shared UI code belongs in `src/ui/shared/`.',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
       // the background runs in a service worker (Chrome) / event page (Firefox) - no DOM
       files: ['src/background/**/*.ts'],
       env: { browser: false, worker: true, webextensions: true },

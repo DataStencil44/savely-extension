@@ -4,7 +4,8 @@
  * is 380 x 600 px; the full page expands to 860 px. Everything has to stay
  * usable at 360 px - that is what Firefox for Android gives us.
  */
-@import '../theme.css';
+@import '../shared/theme.css';
+@import '../shared/toast.css';
 
 :root {
   /* A contract with the virtualization: the JS reads this value
@@ -452,43 +453,6 @@ body[data-mode='popup'] .card__actions .icon {
 }
 
 /* --- toast, tag editor, help --- */
-
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: 16px;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  max-width: calc(100vw - 24px);
-  padding: 8px 12px;
-  transform: translateX(-50%);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow);
-  font-size: 13px;
-}
-
-.toast[hidden] {
-  display: none;
-}
-
-.toast__text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.toast__action {
-  border: none;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
 
 .tag-editor {
   position: fixed;
