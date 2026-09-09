@@ -28,7 +28,7 @@ import { DEFAULT_SETTINGS, type Theme } from '@/lib/settings';
 import { THEME_ICONS, THEME_LABELS, initTheme, nextTheme, setTheme } from '@/lib/theme';
 import { SAVE_ACTIVE_TAB } from '@/types/messages';
 
-import { TAG_LIMIT, createCard, type CardCallbacks } from './cards';
+import { CARD_LAYOUT, createCard, type CardCallbacks } from './cards';
 import { parseQuery } from './query';
 import { closeTagEditor, openTagEditor } from './tags';
 import { showToast } from './toast';
@@ -291,7 +291,7 @@ function render(force = false): void {
   for (let position = range.start; position < range.end; position += 1) {
     const item = state.visible[position];
     if (item === undefined) continue;
-    const card = createCard(item, position, callbacks, TAG_LIMIT[MODE]);
+    const card = createCard(item, position, callbacks, CARD_LAYOUT[MODE]);
     if (position === state.selected) card.setAttribute('aria-selected', 'true');
     applyFavicon(card, item);
     cards.push(card);

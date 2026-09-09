@@ -39,14 +39,33 @@ function button(label: string, glyph: string, onClick: () => void, pressed?: boo
   return element;
 }
 
-/** How many tags fit on a card before the rest become a "+n" - see `TAG_LIMIT`. */
-export const TAG_LIMIT = { full: 3, popup: 1 } as const;
+/**
+ * What fits on a card. The same element serves both modes; the popup's row is
+ * 64 px and one line wide, so it carries less of the same information - never
+ * different information, and never fewer actions.
+ */
+export interface CardLayout {
+  /** How many tags are shown before the rest become a "+n". */
+  tagLimit: number;
+  /** Whether the metadata line has room for the save date. */
+  savedAt: boolean;
+  /** Whether it has room for the reading time. */
+  readingTime: boolean;
+}
+
+export const CARD_LAYOUT: Record<'full' | 'popup', CardLayout> = {
+  full: { tagLimit: 3, savedAt: true, readingTime: true },
+  // In the popup the metadata shares its line with the actions, so it is down
+  // to what identifies the item: the site it came from - and, when there is
+  // something wrong with the item, what.
+  popup: { tagLimit: 1, savedAt: false, readingTime: false },
+};
 
 export function createCard(
   item: SavedItem,
   index: number,
   callbacks: CardCallbacks,
-  tagLimit: number = TAG_LIMIT.full,
+  layout: CardLayout = CARD_LAYOUT.full,
 ): HTMLLIElement {
   const card = document.createElement('li');
   card.className = 'card';
@@ -78,8 +97,8 @@ export function createCard(
   meta.className = 'card__meta';
   const parts = [
     formatDomain(item.url),
-    formatReadingTime(item.estReadingMinutes),
-    formatSavedAt(item.savedAt),
+    layout.readingTime ? formatReadingTime(item.estReadingMinutes) : '',
+    layout.savedAt ? formatSavedAt(item.savedAt) : '',
     formatStatus(item.status),
   ].filter((part) => part !== '');
   meta.textContent = parts.join(' · ');
@@ -90,7 +109,7 @@ export function createCard(
 
   const tags = document.createElement('div');
   tags.className = 'card__tags';
-  for (const tag of item.tags.slice(0, tagLimit)) {
+  for (const tag of item.tags.slice(0, layout.tagLimit)) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'chip';
@@ -102,10 +121,10 @@ export function createCard(
     });
     tags.append(chip);
   }
-  if (item.tags.length > tagLimit) {
+  if (item.tags.length > layout.tagLimit) {
     const more = document.createElement('span');
     more.className = 'chip chip--muted';
-    more.textContent = `+${String(item.tags.length - tagLimit)}`;
+    more.textContent = `+${String(item.tags.length - layout.tagLimit)}`;
     tags.append(more);
   }
   footer.append(tags);
