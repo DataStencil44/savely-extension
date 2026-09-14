@@ -50,9 +50,8 @@ body {
  * The popup is a different device from the full page: 380 px wide, opened for
  * a moment to grab something off the top of the list. A row there is worth less
  * height than it is worth on a page you sit with - so the card gets one line of
- * title and one of metadata with the actions on its right, instead of a row of
- * its own for them: 64 px against the page's 128, and seven items on screen
- * where three used to fit.
+ * title and one of metadata with the tags on its right: 64 px against the
+ * page's 104.
  */
 body[data-mode='popup'] {
   --row-h: 64px;
@@ -120,7 +119,7 @@ body[data-mode='full'] {
 }
 
 .button:hover:not(:disabled),
-.icon:hover {
+.icon:hover:not(:disabled) {
   filter: brightness(1.08);
 }
 
@@ -149,6 +148,11 @@ body[data-mode='full'] {
 .icon[aria-pressed='true'] {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.icon:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .button:focus-visible,
@@ -214,6 +218,30 @@ body[data-mode='full'] {
 .tab__count {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* The actions for the selected card - the cards themselves carry none. */
+.item-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+/* Two lines at most, both inside the height of a button: the popup is too
+   narrow for the hint on one line, and the hint is the only place that says a
+   double click opens the original. */
+.item-actions__title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  flex: 1;
+  min-width: 0;
+  margin-left: 4px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .chips {
@@ -288,8 +316,11 @@ body[data-mode='full'] {
   cursor: default;
 }
 
+/* The toolbar acts on this card, so it has to stand out from a hovered one -
+   hence the accent edge, which hover does not take away. */
 .card[aria-selected='true'] {
   background: var(--bg-elevated);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .card:hover {
@@ -352,18 +383,6 @@ body[data-mode='full'] {
   overflow: hidden;
 }
 
-.card__actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 3px;
-}
-
-.card__actions .icon {
-  width: 24px;
-  height: 24px;
-  font-size: 12px;
-}
-
 /* --- the popup's compact card --- */
 
 body[data-mode='popup'] .card {
@@ -382,7 +401,7 @@ body[data-mode='popup'] .card__thumb {
 
 /*
  * Two rows instead of three: the title across the top, then the metadata with
- * the actions pushed to the end of the same line. A grid rather than more
+ * the tags pushed to the end of the same line. A grid rather than more
  * flexbox, because the footer has to sit next to the metadata while staying
  * where it is in the markup - the same card serves both modes.
  */
@@ -416,27 +435,21 @@ body[data-mode='popup'] .card__footer {
 }
 
 /*
- * Tags keep their place before the actions and take what is left, never more:
- * the actions are the reason the row is there and must not be pushed off it.
- * One tag fits here, so the card shows one and counts the rest (`TAG_LIMIT` in
- * cards.ts); a long name ends in an ellipsis inside its own chip rather than
- * being sliced off at the edge of the row.
+ * The tags take what the site name leaves, never more: the site is what tells
+ * one row from the next. One tag fits here, so the card shows one and counts
+ * the rest (`CARD_LAYOUT` in cards.ts); a long name ends in an ellipsis inside
+ * its own chip rather than being sliced off at the edge of the row.
  */
 body[data-mode='popup'] .card__tags {
   order: 0;
   flex-wrap: nowrap;
-  max-width: 92px;
+  max-width: 140px;
 }
 
 body[data-mode='popup'] .card__tags .chip {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-body[data-mode='popup'] .card__actions .icon {
-  width: 24px;
-  height: 24px;
 }
 
 .empty {
@@ -531,14 +544,6 @@ body[data-mode='popup'] .card__actions .icon {
 /* --- narrow: Firefox for Android, 360 px --- */
 
 @media (max-width: 400px) {
-  body[data-mode='full'] {
-    /* The actions move below the tags, so the row has to grow. The JS reads
-       this value and recomputes the virtualization - see `readRowHeight` in
-       list.ts. The popup is narrower than this too, but it is not this case:
-       it has its own, compact card above. */
-    --row-h: 128px;
-  }
-
   .brand {
     font-size: 15px;
   }
@@ -557,35 +562,14 @@ body[data-mode='popup'] .card__actions .icon {
     height: 48px;
     padding: 12px;
   }
-
-  body[data-mode='full'] .card__actions .icon {
-    width: 28px;
-    height: 28px;
-  }
-
-  /* With no pointer there is no "reveal on hover" - the actions must always be
-     visible, so on a narrow screen they get the card's whole bottom row. */
-  body[data-mode='full'] .card__footer {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 4px;
-  }
-
-  body[data-mode='full'] .card__tags {
-    order: 2;
-  }
 }
 
+/* A fingertip needs a bigger target than a cursor. The toolbar is one row for
+   the whole list, so it can afford the size a button on every card could not. */
 @media (pointer: coarse) {
-  .card__actions .icon {
-    width: 30px;
-    height: 30px;
-  }
-
-  /* The compact card has room for a slightly bigger target, but not for 30 px:
-     the row is 64 px, and the title above this line needs its share of it. */
-  body[data-mode='popup'] .card__actions .icon {
-    width: 26px;
-    height: 26px;
+  .item-actions .icon {
+    width: 34px;
+    height: 34px;
+    font-size: 15px;
   }
 }

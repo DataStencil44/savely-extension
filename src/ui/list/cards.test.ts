@@ -1,23 +1,18 @@
 // @vitest-environment jsdom
 /**
  * The card is the same element in both modes; what differs is how much of it
- * fits. In the popup a row is 84 px and the tags share their line with the
- * actions, so the card shows one tag and counts the rest - the count is the
+ * fits. In the popup a row is 64 px and the tags share their line with the
+ * metadata, so the card shows one tag and counts the rest - the count is the
  * part that must stay honest.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { SavedItem } from '@/lib/db';
 
 import { CARD_LAYOUT, createCard } from './cards';
 
 const CALLBACKS = {
-  openReader: () => undefined,
   openOriginal: () => undefined,
-  toggleArchive: () => undefined,
-  toggleFavorite: () => undefined,
-  editTags: () => undefined,
-  remove: () => undefined,
   filterByTag: () => undefined,
 };
 
@@ -62,7 +57,7 @@ describe('the metadata line', () => {
     );
   });
 
-  it('is the site alone in the popup, where it shares the line with the actions', () => {
+  it('is the site alone in the popup, where it shares the line with the tags', () => {
     expect(meta(createCard(item([]), 0, CALLBACKS, CARD_LAYOUT.popup))).toBe('example.com');
   });
 
@@ -79,7 +74,7 @@ describe('the tags on a card', () => {
     expect(chips(card)).toEqual(['#rust', '#cities', '#transit', '+1']);
   });
 
-  it('shows one in the popup, where it shares the line with the actions', () => {
+  it('shows one in the popup, where it shares the line with the metadata', () => {
     const card = createCard(item(['rust', 'cities', 'transit']), 0, CALLBACKS, CARD_LAYOUT.popup);
     expect(chips(card)).toEqual(['#rust', '+2']);
   });
@@ -89,8 +84,32 @@ describe('the tags on a card', () => {
     expect(chips(createCard(item([]), 0, CALLBACKS, CARD_LAYOUT.popup))).toEqual([]);
   });
 
-  it('the actions are all there either way - the popup drops none of them', () => {
-    const popup = createCard(item(['rust', 'cities']), 0, CALLBACKS, CARD_LAYOUT.popup);
-    expect(popup.querySelectorAll('.card__actions .icon')).toHaveLength(6);
+});
+
+describe('pressing a card', () => {
+  it('carries no action buttons - those live in the toolbar', () => {
+    const card = createCard(item(['rust']), 0, CALLBACKS, CARD_LAYOUT.full);
+    // The tag chip is the only thing on a card that can be pressed.
+    expect([...card.querySelectorAll('button')].map((node) => node.className)).toEqual(['chip']);
+  });
+
+  it('a double click opens the original', () => {
+    const openOriginal = vi.fn();
+    const card = createCard(item([]), 0, { ...CALLBACKS, openOriginal }, CARD_LAYOUT.full);
+
+    card.querySelector('.card__title')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(openOriginal).toHaveBeenCalledWith(expect.objectContaining({ id: 'i1' }));
+  });
+
+  it('a double click on a tag chip filters, and opens nothing', () => {
+    const openOriginal = vi.fn();
+    const filterByTag = vi.fn();
+    const card = createCard(item(['rust']), 0, { openOriginal, filterByTag }, CARD_LAYOUT.full);
+
+    const chip = card.querySelector('.chip');
+    chip?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    chip?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(filterByTag).toHaveBeenCalledWith('rust');
+    expect(openOriginal).not.toHaveBeenCalled();
   });
 });

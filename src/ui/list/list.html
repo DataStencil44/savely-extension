@@ -46,6 +46,15 @@
         </button>
       </nav>
 
+      <div class="item-actions" role="toolbar" aria-label="Selected item">
+        <button id="item-read" class="icon" type="button" title="Read (Enter)" aria-label="Read (Enter)" disabled>&#9654;</button>
+        <button id="item-favorite" class="icon" type="button" title="Add to favorites (f)" aria-label="Add to favorites (f)" aria-pressed="false" disabled>&#9734;</button>
+        <button id="item-archive" class="icon" type="button" title="Archive (a)" aria-label="Archive (a)" aria-pressed="false" disabled>&#9636;</button>
+        <button id="item-tags" class="icon" type="button" title="Tags (t)" aria-label="Tags (t)" disabled>#</button>
+        <button id="item-delete" class="icon" type="button" title="Delete (Delete)" aria-label="Delete (Delete)" disabled>&#10005;</button>
+        <span id="item-title" class="item-actions__title"></span>
+      </div>
+
       <div id="active-tags" class="chips" hidden></div>
     </header>
 
@@ -70,8 +79,9 @@
       <dl class="shortcuts">
         <dt>↑ ↓</dt><dd>move through the list</dd>
         <dt>Home / End</dt><dd>start and end of the list</dd>
+        <dt>click</dt><dd>select - the buttons up top act on it</dd>
         <dt>Enter</dt><dd>open in reader</dd>
-        <dt>o</dt><dd>open original</dd>
+        <dt>double-click, o</dt><dd>open original</dd>
         <dt>a</dt><dd>archive / restore</dd>
         <dt>f</dt><dd>favorite</dd>
         <dt>t</dt><dd>tags</dd>

@@ -67,6 +67,21 @@ function cards(): NodeListOf<HTMLLIElement> {
   return document.querySelectorAll<HTMLLIElement>('.card');
 }
 
+/** A button in the toolbar that acts on the selected card. */
+function toolbar(action: 'read' | 'favorite' | 'archive' | 'tags' | 'delete'): HTMLButtonElement {
+  const found = document.querySelector<HTMLButtonElement>(`#item-${action}`);
+  if (found === null) throw new Error(`no ${action} button`);
+  return found;
+}
+
+/** A click on the first card on screen - the way the toolbar gets something to act on. */
+async function selectFirstCard(): Promise<void> {
+  document.querySelector('.card:first-child .card__title')?.dispatchEvent(
+    new MouseEvent('click', { bubbles: true }),
+  );
+  await settle(30);
+}
+
 beforeAll(async () => {
   await deleteDb();
 
@@ -186,8 +201,36 @@ describe('the full page', () => {
     expect(counts).toEqual([String(ITEMS), '0', '0']);
   });
 
-  it('every card carries the full set of actions', () => {
-    expect(document.querySelectorAll('.card:first-child .card__actions .icon')).toHaveLength(6);
+  it('the toolbar waits for a selection, then acts on it', async () => {
+    const actions = ['read', 'favorite', 'archive', 'tags', 'delete'] as const;
+    const title = (): string | null | undefined => document.querySelector('#item-title')?.textContent;
+
+    // Nothing selected: nothing to act on, and the toolbar says how to get something.
+    for (const action of actions) expect(toolbar(action).disabled).toBe(true);
+    expect(title()).toContain('Select an item');
+
+    await selectFirstCard();
+
+    for (const action of actions) expect(toolbar(action).disabled).toBe(false);
+    expect(title()).toBe(`Article number ${String(ITEMS - 1)}`);
+    expect(document.querySelector('.card[aria-selected="true"]')?.getAttribute('data-index')).toBe('0');
+  });
+
+  it('the toolbar shows the state of the selected item and changes it', async () => {
+    const favorite = toolbar('favorite');
+    const id = document.querySelector<HTMLLIElement>('.card[aria-selected="true"]')?.dataset['id'] ?? '';
+    expect(favorite.getAttribute('aria-pressed')).toBe('false');
+
+    favorite.click();
+    await settle(50);
+    expect(favorite.getAttribute('aria-pressed')).toBe('true');
+    expect(favorite.title).toBe('Remove from favorites (f)');
+    await expect(getItem(id)).resolves.toMatchObject({ favorite: true });
+
+    favorite.click();
+    await settle(50);
+    expect(favorite.getAttribute('aria-pressed')).toBe('false');
+    await expect(getItem(id)).resolves.toMatchObject({ favorite: false });
   });
 
   it('a card shows the icon of its site, and only of its own site', () => {
@@ -235,9 +278,8 @@ describe('the full page', () => {
   it('the reader opens in a new tab and does not mark the item as read', async () => {
     openedTabs.length = 0;
 
-    document
-      .querySelector<HTMLButtonElement>('.card:first-child .card__actions [aria-label^="Read"]')
-      ?.click();
+    await selectFirstCard();
+    toolbar('read').click();
     await settle(30);
 
     const opened = openedTabs.at(-1) ?? '';
@@ -246,6 +288,17 @@ describe('the full page', () => {
     // The reader decides on the read mark after reaching 90% of the content.
     const id = new URL(opened).searchParams.get('id') ?? '';
     expect((await getItem(id))?.readAt).toBeNull();
+  });
+
+  it('a double click on a card opens the original in a new tab', async () => {
+    openedTabs.length = 0;
+
+    const card = document.querySelector<HTMLLIElement>('.card:first-child');
+    card?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await settle(30);
+
+    const item = await getItem(card?.dataset['id'] ?? '');
+    expect(openedTabs).toEqual([item?.resolvedUrl]);
   });
 
   it('scrolling moves the window rather than adding rows', async () => {
@@ -345,11 +398,9 @@ describe('the full page', () => {
 
     // ...and the user then tabs to an action and presses Enter on it. The
     // button's own job is the whole job - the reader must stay shut.
-    const remove = document.querySelector<HTMLButtonElement>(
-      '.card[aria-selected="true"] .card__actions [aria-label^="Delete"]',
-    );
-    remove?.focus();
-    remove?.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
+    const remove = toolbar('delete');
+    remove.focus();
+    remove.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
     await settle(30);
 
     expect(openedTabs).toEqual([]);
@@ -425,10 +476,8 @@ describe('the full page', () => {
       target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     };
 
-    const tagsButton = document.querySelector<HTMLButtonElement>(
-      '.card:first-child .card__actions [aria-label^="Tags"]',
-    );
-    if (tagsButton === null) throw new Error('no tags button');
+    await selectFirstCard();
+    const tagsButton = toolbar('tags');
     const editor = document.querySelector<HTMLElement>('#tag-editor');
 
     press(tagsButton);
@@ -440,26 +489,19 @@ describe('the full page', () => {
     expect(editor?.hidden).toBe(true);
   });
 
-  it('the tags button still closes the editor after a render replaced it', async () => {
+  it('the tags button still closes the editor after a tag redrew the list', async () => {
     const press = (target: HTMLElement): void => {
       target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
       target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     };
-    const tagsButton = (): HTMLButtonElement => {
-      const found = document.querySelector<HTMLButtonElement>(
-        '.card:first-child .card__actions [aria-label^="Tags"]',
-      );
-      if (found === null) throw new Error('no tags button');
-      return found;
-    };
     const editor = document.querySelector<HTMLElement>('#tag-editor');
 
-    press(tagsButton());
+    press(toolbar('tags'));
     await settle(30);
     expect(editor?.hidden).toBe(false);
 
-    // A tag lands in the database and the list rebuilds its cards - the button
-    // under the cursor is now a different element for the same item.
+    // A tag lands in the database and the list redraws, toolbar included - the
+    // button has to go on answering for the same item.
     const input = editor?.querySelector<HTMLInputElement>('.tag-editor__input');
     if (input === undefined || input === null) throw new Error('no tag input');
     input.value = 'locomotive';
@@ -467,7 +509,7 @@ describe('the full page', () => {
     await settle(50);
     expect(editor?.hidden).toBe(false);
 
-    press(tagsButton());
+    press(toolbar('tags'));
     await settle(30);
     expect(editor?.hidden).toBe(true);
   });
@@ -477,7 +519,8 @@ describe('the full page', () => {
     const first = card?.querySelector('.card__title')?.textContent;
     const id = card?.dataset['id'] ?? '';
 
-    document.querySelector<HTMLButtonElement>('.card__actions [aria-label^="Delete"]')?.click();
+    await selectFirstCard();
+    toolbar('delete').click();
     await settle(30);
 
     const toast = document.querySelector<HTMLElement>('#toast');
@@ -496,6 +539,23 @@ describe('the full page', () => {
     expect(document.querySelector('.card__title')?.textContent).toBe(first);
     // And Undo is a restoration, not a deletion that never happened.
     await expect(getItem(id)).resolves.toMatchObject({ id });
+  });
+
+  it('a double click on Delete deletes one item, not the next one as well', async () => {
+    const [first, second] = [...cards()].map((card) => card.dataset['id'] ?? '');
+
+    await selectFirstCard();
+    // The second click of a double click comes with `detail: 2`.
+    toolbar('delete').dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    toolbar('delete').dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
+    await settle(50);
+
+    await expect(getItem(first ?? '')).resolves.toBeUndefined();
+    await expect(getItem(second ?? '')).resolves.toMatchObject({ id: second });
+
+    document.querySelector<HTMLButtonElement>('.toast__action')?.click();
+    await settle(50);
+    await expect(getItem(first ?? '')).resolves.toMatchObject({ id: first });
   });
 
   it('picks up what another context saved, and what it deleted', async () => {

@@ -12,6 +12,10 @@
  * and the document. The store answers with a view, the page draws the view,
  * and every change goes back through the store - so there is one place that
  * decides what the list contains and one place that puts it on screen.
+ *
+ * The item actions live in the toolbar in the top bar, not on the cards: a
+ * click selects a card, the toolbar acts on the selection, and a double click
+ * opens the original.
  */
 import browser from 'webextension-polyfill';
 
@@ -69,9 +73,8 @@ const pending = new Map<string, PendingDelete>();
 
 /**
  * Row height is a contract between the CSS and the virtualization: the popup
- * has a compact card, and at 360 px the full page grows one (the actions move
- * below the tags). That is why the value lives in CSS (`--row-h`) and is only
- * read here - and re-read on resize.
+ * has a compact card and the full page a taller one. That is why the value
+ * lives in CSS (`--row-h`) and is only read here - and re-read on resize.
  *
  * Read off `body`, not `:root`: the mode is an attribute on `body`, so that is
  * where the popup's override sits.
@@ -95,6 +98,12 @@ const el = {
   rows: required<HTMLUListElement>('#rows'),
   empty: required<HTMLParagraphElement>('#empty'),
   tabs: [...document.querySelectorAll<HTMLButtonElement>('.tab')],
+  itemRead: required<HTMLButtonElement>('#item-read'),
+  itemFavorite: required<HTMLButtonElement>('#item-favorite'),
+  itemArchive: required<HTMLButtonElement>('#item-archive'),
+  itemTags: required<HTMLButtonElement>('#item-tags'),
+  itemDelete: required<HTMLButtonElement>('#item-delete'),
+  itemTitle: required<HTMLSpanElement>('#item-title'),
   activeTags: required<HTMLDivElement>('#active-tags'),
   footer: required<HTMLElement>('#footer'),
   seeAll: required<HTMLButtonElement>('#see-all'),
@@ -201,7 +210,7 @@ function render(force = false): void {
   for (let position = range.start; position < range.end; position += 1) {
     const item = visible[position];
     if (item === undefined) continue;
-    const card = createCard(item, position, callbacks, CARD_LAYOUT[MODE]);
+    const card = createCard(item, position, cardCallbacks, CARD_LAYOUT[MODE]);
     if (position === selected) card.setAttribute('aria-selected', 'true');
     applyFavicon(card, item);
     cards.push(card);
@@ -242,10 +251,52 @@ function renderActiveTags(): void {
   }
 }
 
+function setLabel(button: HTMLButtonElement, label: string): void {
+  button.title = label;
+  button.setAttribute('aria-label', label);
+}
+
+/**
+ * The toolbar shows the selected item's state - the star is filled when it is
+ * a favorite - and says which item that is, since the card itself may have
+ * scrolled out of view. With nothing selected there is nothing to act on, so
+ * the buttons are disabled and the title explains how to select something.
+ */
+function renderItemActions(): void {
+  const item = store.selectedItem();
+
+  for (const button of [el.itemRead, el.itemFavorite, el.itemArchive, el.itemTags, el.itemDelete]) {
+    button.disabled = item === undefined;
+  }
+
+  const favorite = item?.favorite === true;
+  el.itemFavorite.textContent = favorite ? '★' : '☆';
+  el.itemFavorite.setAttribute('aria-pressed', String(favorite));
+  setLabel(el.itemFavorite, favorite ? 'Remove from favorites (f)' : 'Add to favorites (f)');
+
+  const archived = item?.archived === true;
+  el.itemArchive.textContent = archived ? '↩' : '▤';
+  el.itemArchive.setAttribute('aria-pressed', String(archived));
+  setLabel(el.itemArchive, archived ? 'Restore from archive (a)' : 'Archive (a)');
+
+  // The tag editor recognizes the button of the item it is open for by this -
+  // a second press on it closes the panel instead of reopening it.
+  if (item === undefined) delete el.itemTags.dataset['tagsFor'];
+  else el.itemTags.dataset['tagsFor'] = item.id;
+
+  el.itemTitle.textContent =
+    item === undefined
+      ? 'Select an item · double-click opens the original'
+      : item.title === ''
+        ? item.url
+        : item.title;
+}
+
 /** The store changed something; everything the change could have touched redraws. */
 function onViewChange(view: ListView): void {
   renderCounts(view);
   renderActiveTags();
+  renderItemActions();
   render(true);
 }
 
@@ -288,41 +339,39 @@ function commit(updated: SavedItem): void {
   announceChange();
 }
 
-const callbacks: CardCallbacks = {
-  // No read marking here - the reader decides that after reaching 90% of the content.
-  openReader(item) {
-    openUrl(`${extensionUrl('ui/reader/index.html')}?id=${encodeURIComponent(item.id)}`);
-  },
+// No read marking here - the reader decides that after reaching 90% of the content.
+function openReader(item: SavedItem): void {
+  openUrl(`${extensionUrl('ui/reader/index.html')}?id=${encodeURIComponent(item.id)}`);
+}
 
-  openOriginal(item) {
-    openUrl(item.resolvedUrl);
-  },
+function openOriginal(item: SavedItem): void {
+  openUrl(item.resolvedUrl);
+}
 
-  toggleArchive(item) {
-    void updateItem(item.id, { archived: !item.archived }).then(commit);
-  },
+function toggleArchive(item: SavedItem): void {
+  void updateItem(item.id, { archived: !item.archived }).then(commit);
+}
 
-  toggleFavorite(item) {
-    void updateItem(item.id, { favorite: !item.favorite }).then(commit);
-  },
+function toggleFavorite(item: SavedItem): void {
+  void updateItem(item.id, { favorite: !item.favorite }).then(commit);
+}
 
-  editTags(item, anchor) {
-    openTagEditor({
-      host: el.tagEditor,
-      anchor,
-      key: item.id,
-      tags: item.tags,
-      known: store.knownTags(),
-      apply: (tags) => {
-        void updateItem(item.id, { tags }).then(commit);
-      },
-    });
-  },
+/** The panel hangs off the toolbar's button, whether a press or `t` opened it. */
+function editTags(item: SavedItem): void {
+  openTagEditor({
+    host: el.tagEditor,
+    anchor: el.itemTags,
+    key: item.id,
+    tags: item.tags,
+    known: store.knownTags(),
+    apply: (tags) => {
+      void updateItem(item.id, { tags }).then(commit);
+    },
+  });
+}
 
-  remove(item) {
-    removeWithUndo(item);
-  },
-
+const cardCallbacks: CardCallbacks = {
+  openOriginal,
   filterByTag(tag) {
     store.addTag(tag);
   },
@@ -503,27 +552,25 @@ function onKeyDown(event: KeyboardEvent): void {
   switch (event.key) {
     case 'Enter':
       event.preventDefault();
-      callbacks.openReader(item);
+      openReader(item);
       break;
     case 'o':
-      callbacks.openOriginal(item);
+      openOriginal(item);
       break;
     case 'a':
-      callbacks.toggleArchive(item);
+      toggleArchive(item);
       break;
     case 'f':
-      callbacks.toggleFavorite(item);
+      toggleFavorite(item);
       break;
-    case 't': {
+    case 't':
       event.preventDefault();
-      const anchor = el.rows.querySelector<HTMLElement>('[aria-selected="true"] .card__actions');
-      if (anchor !== null) callbacks.editTags(item, anchor);
+      editTags(item);
       break;
-    }
     case 'Delete':
     case 'Backspace':
       event.preventDefault();
-      callbacks.remove(item);
+      removeWithUndo(item);
       break;
     default:
       break;
@@ -592,6 +639,21 @@ async function saveCurrentPage(): Promise<void> {
 // Startup
 // ---------------------------------------------------------------------------
 
+/**
+ * A toolbar button acts on whatever is selected at the moment of the press.
+ *
+ * The second click of a double click is not a second press. Delete and Archive
+ * move the selection on to the next card, so a double click on either would
+ * mean two items gone - and Undo only brings back the last one.
+ */
+function onItemAction(button: HTMLButtonElement, run: (item: SavedItem) => void): void {
+  button.addEventListener('click', (event) => {
+    if (event.detail > 1) return;
+    const item = store.selectedItem();
+    if (item !== undefined) run(item);
+  });
+}
+
 function wireEvents(): void {
   el.app.dataset['mode'] = MODE;
   rowHeight = readRowHeight();
@@ -641,6 +703,12 @@ function wireEvents(): void {
     const position = card?.dataset['index'];
     if (position !== undefined) select(Number(position));
   });
+
+  onItemAction(el.itemRead, openReader);
+  onItemAction(el.itemFavorite, toggleFavorite);
+  onItemAction(el.itemArchive, toggleArchive);
+  onItemAction(el.itemTags, editTags);
+  onItemAction(el.itemDelete, removeWithUndo);
 
   el.seeAll.addEventListener('click', () => {
     openUrl(`${extensionUrl('ui/list/list.html')}?full=1`);

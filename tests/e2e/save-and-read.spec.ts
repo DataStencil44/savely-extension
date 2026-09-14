@@ -40,11 +40,11 @@ test('a saved page lands in the list and opens in the reader', async ({ context,
   await expect(list.locator('.card__title')).toHaveText('A centre without cars');
   await expect(list.locator('.card__meta')).toContainText('127.0.0.1');
 
-  // The reader opens in a new tab. The button is picked by its label, not by
-  // its position: the first icon on the card is "Open original".
+  // The reader opens in a new tab, from the toolbar, once the card is selected.
+  await list.locator('.card__title').click();
   const [reader] = await Promise.all([
     context.waitForEvent('page'),
-    list.locator('.card__actions [aria-label^="Read"]').first().click(),
+    list.locator('#item-read').click(),
   ]);
   await reader.waitForLoadState('domcontentloaded');
 

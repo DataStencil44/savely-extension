@@ -1,6 +1,11 @@
 /**
  * Building an item card.
  *
+ * A card carries no buttons of its own. A click selects it and the toolbar in
+ * the top bar acts on the selection (`list.ts`), and a double click opens the
+ * original page. Six buttons on every card were six targets per row, most of
+ * them the size of a fingertip, and they took the room the title needed.
+ *
  * The whole UI is assembled with `createElement` + `textContent` - no
  * `innerHTML` with user data or page data (CLAUDE.md 3).
  */
@@ -10,40 +15,14 @@ import { formatDomain, formatReadingTime, formatSavedAt, formatStatus } from '@/
 import { moreChip, tagChip } from './chips';
 
 export interface CardCallbacks {
-  openReader: (item: SavedItem) => void;
   openOriginal: (item: SavedItem) => void;
-  toggleArchive: (item: SavedItem) => void;
-  toggleFavorite: (item: SavedItem) => void;
-  editTags: (item: SavedItem, anchor: HTMLElement) => void;
-  remove: (item: SavedItem) => void;
   filterByTag: (tag: string) => void;
-}
-
-function button(label: string, glyph: string, onClick: () => void, pressed?: boolean): HTMLButtonElement {
-  const element = document.createElement('button');
-  element.type = 'button';
-  element.className = 'icon';
-  element.textContent = glyph;
-  element.title = label;
-  element.setAttribute('aria-label', label);
-  if (pressed !== undefined) element.setAttribute('aria-pressed', String(pressed));
-  element.addEventListener('click', (event) => {
-    // The card as a whole opens the reader - a button must not trigger that too.
-    event.stopPropagation();
-    onClick();
-  });
-  // Two quick presses on a button are two presses of that button, nothing more:
-  // without this the card's double click opens the reader on top of them.
-  element.addEventListener('dblclick', (event) => {
-    event.stopPropagation();
-  });
-  return element;
 }
 
 /**
  * What fits on a card. The same element serves both modes; the popup's row is
  * 64 px and one line wide, so it carries less of the same information - never
- * different information, and never fewer actions.
+ * different information.
  */
 export interface CardLayout {
   /** How many tags are shown before the rest become a "+n". */
@@ -56,7 +35,7 @@ export interface CardLayout {
 
 export const CARD_LAYOUT: Record<'full' | 'popup', CardLayout> = {
   full: { tagLimit: 3, savedAt: true, readingTime: true },
-  // In the popup the metadata shares its line with the actions, so it is down
+  // In the popup the metadata shares its line with the tags, so it is down
   // to what identifies the item: the site it came from - and, when there is
   // something wrong with the item, what.
   popup: { tagLimit: 1, savedAt: false, readingTime: false },
@@ -115,7 +94,7 @@ export function createCard(
       tagChip(tag, {
         title: `Filter by #${tag}`,
         onClick: (event) => {
-          // The card as a whole opens the reader; a chip narrows the list.
+          // A click on the card selects it; a chip narrows the list instead.
           event.stopPropagation();
           callbacks.filterByTag(tag);
         },
@@ -127,49 +106,13 @@ export function createCard(
   }
   footer.append(tags);
 
-  const actions = document.createElement('div');
-  actions.className = 'card__actions';
-  const tagButton = button('Tags (t)', '#', () => {
-    callbacks.editTags(item, tagButton);
-  });
-  // The tag editor recognizes its own button by this - the cards are rebuilt on
-  // every render, so the element itself is no lasting identity.
-  tagButton.dataset['tagsFor'] = item.id;
-  actions.append(
-    button('Open original (o)', '↗', () => {
-      callbacks.openOriginal(item);
-    }),
-    button('Read (Enter)', '▶', () => {
-      callbacks.openReader(item);
-    }),
-    button(
-      item.favorite ? 'Remove from favorites (f)' : 'Add to favorites (f)',
-      item.favorite ? '★' : '☆',
-      () => {
-        callbacks.toggleFavorite(item);
-      },
-      item.favorite,
-    ),
-    button(
-      item.archived ? 'Restore from archive (a)' : 'Archive (a)',
-      item.archived ? '↩' : '▤',
-      () => {
-        callbacks.toggleArchive(item);
-      },
-      item.archived,
-    ),
-    tagButton,
-    button('Delete (Delete)', '✕', () => {
-      callbacks.remove(item);
-    }),
-  );
-  footer.append(actions);
-
   body.append(footer);
   card.append(body);
 
-  card.addEventListener('dblclick', () => {
-    callbacks.openReader(item);
+  card.addEventListener('dblclick', (event) => {
+    // Two quick presses on a tag chip are two filter clicks, not a trip to the site.
+    if (event.target instanceof Element && event.target.closest('.chip') !== null) return;
+    callbacks.openOriginal(item);
   });
 
   return card;
