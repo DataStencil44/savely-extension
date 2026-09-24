@@ -16,68 +16,44 @@ import { fileURLToPath } from 'node:url';
 const OUT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'public', 'icons');
 const SIZES = [16, 32, 48, 128];
 
-const ACCENT = [37, 99, 235];
-const GLYPH = [255, 255, 255];
+// The mark, in a 512-unit square (same geometry as the SVG logo):
+// a dark tile, a blue triangle on the upper left and a violet one on the right,
+// leaving a V-shaped notch at the bottom.
+const BACKGROUND = [43, 42, 41];
+const BLUE = [44, 94, 215];
+const VIOLET = [66, 67, 162];
 
-/** A rounded square across the whole canvas. */
-function inRoundedSquare(x, y, size) {
-  const r = size * 0.22;
-  const min = r;
-  const max = size - r;
-  const cx = Math.min(Math.max(x, min), max);
-  const cy = Math.min(Math.max(y, min), max);
-  return (x - cx) ** 2 + (y - cy) ** 2 <= r * r;
+/** Which color the point (x, y) in 512-unit space falls on. */
+function colorAt(x, y) {
+  if (x < 85 || x > 425 || y < 55 || y > 440) return BACKGROUND;
+  // The diagonal from the top right (425, 55) to the bottom left (85, 440).
+  const side = (x - 425) * (440 - 55) - (y - 55) * (85 - 425);
+  if (side < 0) return BLUE;
+  // Right of the diagonal: violet above the line from the notch apex (255, 247.5) to (425, 440).
+  return (y - 247.5) * (425 - 255) <= (x - 255) * (440 - 247.5) ? VIOLET : BACKGROUND;
 }
 
-/** The bookmark: a rectangle with a V-shaped notch at the bottom. */
-function inBookmark(x, y, size) {
-  const x0 = size * 0.33;
-  const x1 = size * 0.67;
-  const y0 = size * 0.2;
-  const y1 = size * 0.8;
-  if (x < x0 || x > x1 || y < y0 || y > y1) return false;
-
-  const notchTop = size * 0.6;
-  if (y <= notchTop) return true;
-
-  const halfWidth = (x1 - x0) / 2;
-  const progress = (y - notchTop) / (y1 - notchTop);
-  return Math.abs(x - (x0 + halfWidth)) > halfWidth * progress;
-}
-
-/** Pixel coverage computed by 4x4 supersampling - cheap antialiasing. */
-function coverage(px, py, size, predicate) {
-  const steps = 4;
-  let hits = 0;
-  for (let sy = 0; sy < steps; sy += 1) {
-    for (let sx = 0; sx < steps; sx += 1) {
-      const x = px + (sx + 0.5) / steps;
-      const y = py + (sy + 0.5) / steps;
-      if (predicate(x, y, size)) hits += 1;
-    }
-  }
-  return hits / (steps * steps);
-}
-
+/** 4x4 supersampling per pixel - cheap antialiasing. */
 function renderRgba(size) {
+  const steps = 4;
+  const scale = 512 / size;
   const pixels = Buffer.alloc(size * size * 4);
-
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
-      const background = coverage(x, y, size, inRoundedSquare);
-      const glyph = coverage(x, y, size, inBookmark) * background;
-      const alpha = background;
-
+      const sum = [0, 0, 0];
+      for (let sy = 0; sy < steps; sy += 1) {
+        for (let sx = 0; sx < steps; sx += 1) {
+          const color = colorAt((x + (sx + 0.5) / steps) * scale, (y + (sy + 0.5) / steps) * scale);
+          for (let channel = 0; channel < 3; channel += 1) sum[channel] += color[channel];
+        }
+      }
       const offset = (y * size + x) * 4;
       for (let channel = 0; channel < 3; channel += 1) {
-        // The glyph over the accent background; both already premultiplied by their coverage.
-        const value = ACCENT[channel] * (1 - glyph) + GLYPH[channel] * glyph;
-        pixels[offset + channel] = Math.round(value);
+        pixels[offset + channel] = Math.round(sum[channel] / (steps * steps));
       }
-      pixels[offset + 3] = Math.round(alpha * 255);
+      pixels[offset + 3] = 255;
     }
   }
-
   return pixels;
 }
 
