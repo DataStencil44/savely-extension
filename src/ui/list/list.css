@@ -228,20 +228,15 @@ body[data-mode='full'] {
   margin-top: 8px;
 }
 
-/* Two lines at most, both inside the height of a button: the popup is too
-   narrow for the hint on one line, and the hint is the only place that says a
-   double click opens the original. */
 .item-actions__title {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
   flex: 1;
   min-width: 0;
   margin-left: 4px;
-  overflow: hidden;
   color: var(--text-muted);
-  font-size: 11px;
-  line-height: 1.2;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chips {

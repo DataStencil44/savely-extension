@@ -260,7 +260,7 @@ function setLabel(button: HTMLButtonElement, label: string): void {
  * The toolbar shows the selected item's state - the star is filled when it is
  * a favorite - and says which item that is, since the card itself may have
  * scrolled out of view. With nothing selected there is nothing to act on, so
- * the buttons are disabled and the title explains how to select something.
+ * the buttons are disabled and the title is empty.
  */
 function renderItemActions(): void {
   const item = store.selectedItem();
@@ -284,12 +284,7 @@ function renderItemActions(): void {
   if (item === undefined) delete el.itemTags.dataset['tagsFor'];
   else el.itemTags.dataset['tagsFor'] = item.id;
 
-  el.itemTitle.textContent =
-    item === undefined
-      ? 'Select an item · double-click opens the original'
-      : item.title === ''
-        ? item.url
-        : item.title;
+  el.itemTitle.textContent = item === undefined ? '' : item.title === '' ? item.url : item.title;
 }
 
 /** The store changed something; everything the change could have touched redraws. */

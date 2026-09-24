@@ -205,9 +205,9 @@ describe('the full page', () => {
     const actions = ['read', 'favorite', 'archive', 'tags', 'delete'] as const;
     const title = (): string | null | undefined => document.querySelector('#item-title')?.textContent;
 
-    // Nothing selected: nothing to act on, and the toolbar says how to get something.
+    // Nothing selected: nothing to act on, and no title to show.
     for (const action of actions) expect(toolbar(action).disabled).toBe(true);
-    expect(title()).toContain('Select an item');
+    expect(title()).toBe('');
 
     await selectFirstCard();
 
