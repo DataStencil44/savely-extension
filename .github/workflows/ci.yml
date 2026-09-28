@@ -116,6 +116,7 @@ jobs:
         run: |
           npm run build
           npm run pack
+          npm run pack:source
 
       - uses: actions/upload-artifact@v4
         with:
@@ -123,6 +124,7 @@ jobs:
           path: |
             artifacts/chrome.zip
             artifacts/firefox.zip
+            artifacts/source.zip
           retention-days: 90
 
       - name: GitHub release
@@ -132,4 +134,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --title "Savely $GITHUB_REF_NAME" \
             --generate-notes \
-            artifacts/chrome.zip artifacts/firefox.zip
+            artifacts/chrome.zip artifacts/firefox.zip artifacts/source.zip

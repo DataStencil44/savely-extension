@@ -30,7 +30,7 @@ Edge, Opera) i Firefox (desktop + Android).
 | Szyfrowanie danych synchronizacji | ❌ | dane w Gistcie są prywatne, ale nieszyfrowane (patrz niżej) |
 | Safari | ❌ | poza zakresem |
 | Chrome na Androidzie | ❌ | przeglądarka nie obsługuje rozszerzeń |
-| Tłumaczenia UI | ❌ | interfejs wyłącznie po polsku (brak `_locales`) |
+| Tłumaczenia UI | ❌ | interfejs wyłącznie po angielsku (brak `_locales`) |
 | AI, podsumowania, TTS | ❌ | poza zakresem MVP |
 
 ---
@@ -92,6 +92,7 @@ npm run start:android -- --android-device <ID z `adb devices`>
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run check` | lint + typecheck + testy |
 | `npm run pack` | `artifacts/chrome.zip` i `artifacts/firefox.zip` |
+| `npm run pack:source` | `artifacts/source.zip` — źródła z `HEAD` dla recenzji AMO |
 | `npm run clean` | usuwa `dist/` i `artifacts/` |
 
 ---
@@ -201,13 +202,14 @@ i wydanie GitHub z `chrome.zip` i `firefox.zip`.
 
 ### Znane ostrzeżenia `web-ext lint`
 
-Zero błędów jest warunkiem przejścia CI. Zostają cztery ostrzeżenia, wszystkie
+Zero błędów jest warunkiem przejścia CI. Zostaje osiem ostrzeżeń, wszystkie
 w kodzie zależności i wszystkie nieszkodliwe:
 
-- `DANGEROUS_EVAL` w `list.js` — `flexsearch` ma w bundlu ścieżkę dla Web
+- `DANGEROUS_EVAL` ×2 w `list.js` — `flexsearch` ma w bundlu ścieżkę dla Web
   Workera, która składa funkcje ze stringów. Nie używamy trybu workera, więc
   ten kod nigdy się nie wykonuje (a CSP MV3 i tak by na to nie pozwoliło).
-- `UNSAFE_VAR_ASSIGNMENT` ×3 — przypisania do `innerHTML` wewnątrz DOMPurify
+- `UNSAFE_VAR_ASSIGNMENT` ×6 (`content.js`, `chunks/extract-*`,
+  `chunks/sanitize-*`) — przypisania do `innerHTML` wewnątrz DOMPurify
   i Readability, czyli w samym sanityzatorze i parserze. Nasz kod wstawia treść
   wyłącznie przez `RETURN_DOM_FRAGMENT` + `append()`.
 
@@ -217,19 +219,24 @@ w kodzie zależności i wszystkie nieszkodliwe:
 
 Wersja ma jedno źródło prawdy: `package.json` → manifest. Wydanie zaczyna się od
 `npm version <patch|minor|major>` i pushu tagu `vX.Y.Z`; CI zbuduje paczki
-i utworzy wydanie GitHub. Do sklepów wysyłasz pliki z tego wydania.
+(`chrome.zip`, `firefox.zip`, `source.zip`) i utworzy wydanie GitHub. Do
+sklepów wysyłasz pliki z tego wydania.
+
+Teksty do formularzy obu sklepów (opis, uzasadnienia uprawnień, notatka dla
+recenzenta AMO) są w [`store/LISTING.md`](store/LISTING.md), polityka
+prywatności — w [`store/PRIVACY.md`](store/PRIVACY.md).
 
 ### addons.mozilla.org (Firefox + Firefox na Androida)
 
-1. **Ustaw prawdziwe ID.** W `build/make-manifest.ts` `GECKO_ID` to placeholder
-   `savely@example.invalid`. Przed pierwszą wysyłką zamień go na ID z własnej
-   domeny albo adres e-mail (np. `savely@twojadomena.pl`). ID jest na zawsze —
-   zmiana oznacza nowy dodatek.
-2. `npm run build && npm run pack` → `artifacts/firefox.zip`.
+1. **ID dodatku** to `{d45c453b-44c5-411b-925a-ec28396362a7}`
+   (`GECKO_ID` w `build/make-manifest.ts`). Jest na zawsze — zmiana oznacza
+   nowy dodatek.
+2. `npm run build && npm run pack && npm run pack:source` →
+   `artifacts/firefox.zip` i `artifacts/source.zip`.
 3. AMO → *Submit a New Add-on* → *On this site* → wgraj `firefox.zip`.
 4. **Wgraj źródła.** Kod jest bundlowany i minifikowany, więc AMO wymaga
-   archiwum źródeł (repo bez `node_modules/`, `dist/` i `artifacts/`) plus
-   instrukcji budowania: Node 20, `npm ci`, `npm run build:firefox`, wynik
+   archiwum źródeł — `artifacts/source.zip` (`git archive` z `HEAD`, więc
+   najpierw commit) plus instrukcji budowania: Node 20, `npm ci`, `npm run build:firefox`, wynik
    w `dist/firefox`.
 5. **Zbieranie danych: żadne.** Manifest deklaruje
    `browser_specific_settings.gecko.data_collection_permissions.required: ["none"]`
@@ -252,8 +259,8 @@ i utworzy wydanie GitHub. Do sklepów wysyłasz pliki z tego wydania.
 4. W zakładce *Privacy practices* zadeklaruj brak zbierania danych i uzasadnij
    każde uprawnienie (lista jak wyżej + `offscreen`, którego wariant Chromium
    używa do parsowania HTML-a pobranego w tle — service worker nie ma DOM-u).
-5. Podaj politykę prywatności (wystarczy jedna strona: „dane nie opuszczają
-   urządzenia poza eksportem, który użytkownik sam zapisuje").
+5. Podaj URL polityki prywatności — opublikuj `store/PRIVACY.md` (np. link do
+   pliku na GitHubie).
 6. Wyślij do recenzji. Rozszerzenia z `<all_urls>` — nawet opcjonalnym — bywają
    sprawdzane dłużej.
 

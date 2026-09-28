@@ -16,8 +16,11 @@ import type { Plugin } from 'vite';
 
 export type Target = 'chrome' | 'firefox';
 
-/** A placeholder - replace with the real ID before publishing on AMO. */
-const GECKO_ID = 'savely@example.invalid';
+/**
+ * The AMO add-on ID. Permanent: changing it after the first upload makes a new
+ * add-on, and existing installs stop receiving updates.
+ */
+const GECKO_ID = '{d45c453b-44c5-411b-925a-ec28396362a7}';
 
 /**
  * Firefox 128 was the first ESR with full MV3, but the floor is raised by
