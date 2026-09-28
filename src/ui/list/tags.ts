@@ -5,7 +5,7 @@
  * the card - cards must keep a fixed height, otherwise the virtualization stops
  * computing row positions correctly.
  */
-import { normalizeTags } from '@/lib/db';
+import { normalizeTags } from '@/lib/url';
 
 import { tagChip } from './chips';
 

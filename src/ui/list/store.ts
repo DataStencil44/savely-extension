@@ -14,7 +14,7 @@
  * index cannot fall behind the items, because the same method moves them.
  * Everything here is plain data - the page subscribes, and draws.
  */
-import type { SavedItem } from '@/lib/db';
+import type { SavedItem } from '@/lib/library';
 import { SearchIndex } from '@/lib/search';
 
 export type TabId = 'inbox' | 'favorite' | 'archive';

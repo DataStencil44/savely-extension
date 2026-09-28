@@ -19,19 +19,20 @@
  */
 import browser from 'webextension-polyfill';
 
-import { announceChange, onDataChanged } from '@/lib/changes';
+import { onDataChanged } from '@/lib/changes';
+import { faviconKey } from '@/lib/favicon';
 import {
   deleteItem,
   getContents,
+  listAllItems,
   listContentIds,
   listFavicons,
-  listItems,
   restoreItem,
+  toggleItem,
   updateItem,
   type RemovedItem,
   type SavedItem,
-} from '@/lib/db';
-import { faviconKey } from '@/lib/favicon';
+} from '@/lib/library';
 import { isSaveResultMessage } from '@/lib/guards';
 import { DEFAULT_SETTINGS, type Theme } from '@/lib/settings';
 import { THEME_ICONS, THEME_LABELS, initTheme, nextTheme, setTheme } from '@/lib/theme';
@@ -122,19 +123,6 @@ const el = {
 // Data
 // ---------------------------------------------------------------------------
 
-async function loadItems(): Promise<SavedItem[]> {
-  const all: SavedItem[] = [];
-  let cursor: string | null = null;
-
-  do {
-    const page: Awaited<ReturnType<typeof listItems>> = await listItems({ limit: 500, cursor });
-    all.push(...page.items);
-    cursor = page.nextCursor;
-  } while (cursor !== null && all.length < 20_000);
-
-  return all;
-}
-
 /**
  * All the icons in one read, before the first render.
  *
@@ -153,7 +141,7 @@ async function loadFavicons(): Promise<void> {
  * a moment later, in front of the reader.
  */
 async function loadAll(): Promise<void> {
-  const [items] = await Promise.all([loadItems(), loadFavicons()]);
+  const [items] = await Promise.all([listAllItems(), loadFavicons()]);
   store.setItems(items);
 }
 
@@ -324,14 +312,9 @@ function openUrl(url: string): void {
   if (MODE === 'popup') window.close();
 }
 
-/**
- * An item came back from the database changed. The store puts it on screen;
- * the announcement is for whoever else is showing it - the other list, the
- * reader open on this very item.
- */
+/** An item came back from the database changed; the store puts it on screen. */
 function commit(updated: SavedItem): void {
   store.replace(updated);
-  announceChange();
 }
 
 // No read marking here - the reader decides that after reaching 90% of the content.
@@ -344,11 +327,11 @@ function openOriginal(item: SavedItem): void {
 }
 
 function toggleArchive(item: SavedItem): void {
-  void updateItem(item.id, { archived: !item.archived }).then(commit);
+  void toggleItem(item.id, 'archived').then(commit);
 }
 
 function toggleFavorite(item: SavedItem): void {
-  void updateItem(item.id, { favorite: !item.favorite }).then(commit);
+  void toggleItem(item.id, 'favorite').then(commit);
 }
 
 /** The panel hangs off the toolbar's button, whether a press or `t` opened it. */
@@ -389,17 +372,12 @@ const cardCallbacks: CardCallbacks = {
 function removeWithUndo(item: SavedItem): void {
   store.remove(item.id);
 
-  const removed = deleteItem(item.id)
-    .then((entry) => {
-      announceChange();
-      return entry;
-    })
-    .catch((error: unknown) => {
-      // Nothing awaits this until Undo, and an unhandled rejection would take
-      // the whole handler down with it.
-      console.error('[savely] the deletion did not reach the database:', error);
-      return null;
-    });
+  const removed = deleteItem(item.id).catch((error: unknown) => {
+    // Nothing awaits this until Undo, and an unhandled rejection would take
+    // the whole handler down with it.
+    console.error('[savely] the deletion did not reach the database:', error);
+    return null;
+  });
   pending.set(item.id, { item, removed });
 
   showToast(el.toast, {
@@ -428,7 +406,6 @@ async function undoRemoval(id: string): Promise<void> {
   if (removed !== null) await restoreItem(removed);
 
   store.restore(entry.item);
-  announceChange();
 }
 
 // ---------------------------------------------------------------------------

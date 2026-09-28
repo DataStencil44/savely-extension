@@ -9,8 +9,15 @@
  */
 import browser from 'webextension-polyfill';
 
-import { announceChange, onDataChanged } from '@/lib/changes';
-import { getContent, getItem, updateItem, type SavedItem } from '@/lib/db';
+import { onDataChanged } from '@/lib/changes';
+import {
+  getContent,
+  getItem,
+  saveReadingProgress,
+  toggleItem,
+  updateItem,
+  type SavedItem,
+} from '@/lib/library';
 import { sanitizeToFragment } from '@/lib/sanitize';
 import {
   COLUMN_WIDTH_RANGE,
@@ -202,7 +209,7 @@ function onScroll(): void {
 
   if (!markedRead && ratio >= READ_THRESHOLD && item.readAt === null) {
     markedRead = true;
-    void updateItem(item.id, { readAt: Date.now() }).then(announceChange);
+    void updateItem(item.id, { readAt: Date.now() });
   }
 
   if (saveTimer !== undefined) clearTimeout(saveTimer);
@@ -213,7 +220,7 @@ function onScroll(): void {
 
 async function persistProgress(): Promise<void> {
   if (item === null) return;
-  await updateItem(item.id, { readingProgress: scrollRatio() });
+  await saveReadingProgress(item.id, scrollRatio());
 }
 
 function restoreScroll(): void {
@@ -238,26 +245,24 @@ function renderItemState(): void {
 
 async function toggleFavorite(): Promise<void> {
   if (item === null) return;
-  item = await updateItem(item.id, { favorite: !item.favorite });
+  item = await toggleItem(item.id, 'favorite');
   renderItemState();
-  announceChange();
   toast(item.favorite ? 'Added to favorites.' : 'Removed from favorites.');
 }
 
 async function toggleArchive(): Promise<void> {
   if (item === null) return;
-  item = await updateItem(item.id, { archived: !item.archived });
+  item = await toggleItem(item.id, 'archived');
   renderItemState();
-  announceChange();
   toast(item.archived ? 'Archived.' : 'Restored from the archive.');
 }
 
 /**
  * The same article, changed somewhere else - archived from the list, or pulled
- * in by a sync. Only the item is re-read: the article on screen is the one
- * being read, and re-rendering it would take the reader's place on the page
- * with it. What this fixes is the header lying, and the next toggle being
- * computed from a state that is two changes old.
+ * in by a sync. The item and its highlights are re-read; the article itself is
+ * not: it is the one being read, and re-rendering it would take the reader's
+ * place on the page with it. What this fixes is the header lying, and the
+ * marks on the page pointing at highlights a sync has removed or added.
  */
 async function refreshItemState(): Promise<void> {
   if (item === null) return;
@@ -267,6 +272,7 @@ async function refreshItemState(): Promise<void> {
   if (current === undefined) return;
   item = current;
   renderItemState();
+  await annotations.reload();
 }
 
 function openList(): void {

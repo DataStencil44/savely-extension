@@ -9,7 +9,7 @@
  * The whole UI is assembled with `createElement` + `textContent` - no
  * `innerHTML` with user data or page data (CLAUDE.md 3).
  */
-import type { SavedItem } from '@/lib/db';
+import type { SavedItem } from '@/lib/library';
 
 import { formatDomain, formatReadingTime, formatSavedAt, formatStatus } from '@/ui/shared/format';
 import { moreChip, tagChip } from './chips';

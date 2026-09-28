@@ -9,12 +9,13 @@ import 'fake-indexeddb/auto';
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 
 import {
+  DB_VERSION,
   SNAPSHOT_INTERVAL_MS,
   SNAPSHOT_LIMIT,
   addHighlight,
+  applySync,
   clearAllData,
   closeDb,
-  countItems,
   createSnapshot,
   createSnapshotIfDue,
   dataStats,
@@ -27,20 +28,30 @@ import {
   importDump,
   listAllItems,
   listHighlights,
-  listItems,
   listSnapshots,
   listTombstones,
-  normalizeTags,
-  normalizeUrl,
   openDb,
   restoreItem,
   restoreSnapshot,
   saveItem,
   setContent,
+  toggleItem,
   updateItem,
   type Migration,
   type SavedItem,
 } from './db';
+import { normalizeTags, normalizeUrl } from './url';
+
+/** Counted straight from the store, so a count never depends on a read path under test. */
+async function countItems(): Promise<number> {
+  const db = await openDb();
+  return db.count('items');
+}
+
+async function countArchived(): Promise<number> {
+  const db = await openDb();
+  return db.countFromIndex('items', 'archived', 1);
+}
 
 beforeEach(async () => {
   await deleteDb();
@@ -165,126 +176,30 @@ describe('saveItem', () => {
   });
 });
 
-describe('listItems', () => {
-  /** Four items with increasing `savedAt`, so the order is deterministic. */
-  async function seed(): Promise<SavedItem[]> {
-    const items: SavedItem[] = [];
-    for (let i = 1; i <= 4; i += 1) {
-      items.push(
-        await saveItem({
-          url: `https://example.com/${i}`,
-          title: `Article ${i}`,
-          savedAt: i * 1_000,
-          tags: i % 2 === 0 ? ['rust'] : ['rust', 'web'],
-        }),
-      );
-    }
-    return items;
-  }
-
-  it('sorts newest-first by default', async () => {
-    await seed();
-    const page = await listItems();
-
-    expect(page.items.map((item) => item.title)).toEqual([
-      'Article 4',
-      'Article 3',
-      'Article 2',
-      'Article 1',
-    ]);
-    expect(page.nextCursor).toBeNull();
-  });
-
-  it('sorts oldest-first', async () => {
-    await seed();
-    const page = await listItems({ sort: 'oldest' });
-
-    expect(page.items.map((item) => item.title)).toEqual([
-      'Article 1',
-      'Article 2',
-      'Article 3',
-      'Article 4',
-    ]);
-  });
-
-  it('paginates by cursor without losing or repeating items', async () => {
-    await seed();
-
-    const seen: string[] = [];
-    let cursor: string | null = null;
-    let pages = 0;
-
-    do {
-      const page: Awaited<ReturnType<typeof listItems>> = await listItems({ limit: 2, cursor });
-      seen.push(...page.items.map((item) => item.title));
-      cursor = page.nextCursor;
-      pages += 1;
-    } while (cursor !== null && pages < 10);
-
-    expect(seen).toEqual(['Article 4', 'Article 3', 'Article 2', 'Article 1']);
-    expect(new Set(seen).size).toBe(4);
-    expect(pages).toBe(2);
-  });
-
-  it('paginates correctly even with identical savedAt', async () => {
+describe('listAllItems', () => {
+  it('returns every item newest-first, ties broken the same way every time', async () => {
     for (let i = 1; i <= 3; i += 1) {
-      await saveItem({ url: `https://example.com/equal-${i}`, savedAt: 7_000 });
+      await saveItem({
+        url: `https://example.com/${String(i)}`,
+        title: `Article ${String(i)}`,
+        savedAt: i * 1_000,
+      });
     }
+    const tied = [
+      await saveItem({ url: 'https://example.com/tie-a', savedAt: 500 }),
+      await saveItem({ url: 'https://example.com/tie-b', savedAt: 500 }),
+    ];
 
-    const seen: string[] = [];
-    let cursor: string | null = null;
-    let pages = 0;
+    const items = await listAllItems();
 
-    do {
-      const page: Awaited<ReturnType<typeof listItems>> = await listItems({ limit: 1, cursor });
-      seen.push(...page.items.map((item) => item.id));
-      cursor = page.nextCursor;
-      pages += 1;
-    } while (cursor !== null && pages < 10);
-
-    expect(new Set(seen).size).toBe(3);
-  });
-
-  it('filters by item state', async () => {
-    const items = await seed();
-    const [first, second] = items;
-    if (first === undefined || second === undefined) throw new Error('missing test data');
-
-    await updateItem(first.id, { archived: true });
-    await updateItem(second.id, { favorite: true, readAt: 9_000 });
-
-    await expect(
-      listItems({ filter: { archived: true } }).then((page) => page.items.length),
-    ).resolves.toBe(1);
-    await expect(
-      listItems({ filter: { archived: false } }).then((page) => page.items.length),
-    ).resolves.toBe(3);
-    await expect(
-      listItems({ filter: { favorite: true } }).then((page) => page.items[0]?.id),
-    ).resolves.toBe(second.id);
-    await expect(
-      listItems({ filter: { unread: false } }).then((page) => page.items[0]?.id),
-    ).resolves.toBe(second.id);
-    await expect(
-      listItems({ filter: { status: 'pending' } }).then((page) => page.items.length),
-    ).resolves.toBe(4);
-  });
-
-  it('filters by tags as a conjunction', async () => {
-    await seed();
-
-    await expect(listItems({ filter: { tags: ['rust'] } }).then((p) => p.items.length)).resolves.toBe(
-      4,
+    expect(items.slice(0, 3).map((item) => item.title)).toEqual([
+      'Article 3',
+      'Article 2',
+      'Article 1',
+    ]);
+    expect(items.slice(3).map((item) => item.id)).toEqual(
+      tied.map((item) => item.id).sort().reverse(),
     );
-    await expect(listItems({ filter: { tags: ['web'] } }).then((p) => p.items.length)).resolves.toBe(
-      2,
-    );
-    await expect(
-      listItems({ filter: { tags: ['rust', 'web'] } }).then((p) => p.items.length),
-    ).resolves.toBe(2);
-    await expect(
-      listItems({ filter: { tags: ['rust', 'missing'] } }).then((p) => p.items.length),
-    ).resolves.toBe(0);
   });
 });
 
@@ -297,11 +212,11 @@ describe('updateItem', () => {
     expect(updated.archivedKey).toBe(1);
     expect(updated.tags).toEqual(['rust']);
     // Querying the index confirms the key really was updated.
-    await expect(countItems({ archived: true })).resolves.toBe(1);
+    await expect(countArchived()).resolves.toBe(1);
 
     const back = await updateItem(item.id, { archived: false });
     expect(back.archivedKey).toBe(0);
-    await expect(countItems({ archived: true })).resolves.toBe(0);
+    await expect(countArchived()).resolves.toBe(0);
   });
 
   it('throws for an unknown id', async () => {
@@ -418,19 +333,29 @@ describe('highlights', () => {
   });
 });
 
-describe('countItems', () => {
-  it('counts totals, state and tags', async () => {
-    const a = await saveItem({ url: 'https://example.com/a', tags: ['rust'] });
-    await saveItem({ url: 'https://example.com/b', tags: ['rust', 'web'] });
-    await saveItem({ url: 'https://example.com/c' });
-    await updateItem(a.id, { archived: true, favorite: true });
+describe('toggleItem', () => {
+  it('flips what the database holds, not what the caller last saw', async () => {
+    const item = await saveItem({ url: 'https://example.com/a' });
+    // Another context turned it on after this caller read `item`.
+    await updateItem(item.id, { favorite: true });
 
-    await expect(countItems()).resolves.toBe(3);
-    await expect(countItems({ archived: true })).resolves.toBe(1);
-    await expect(countItems({ archived: false })).resolves.toBe(2);
-    await expect(countItems({ tags: ['rust'] })).resolves.toBe(2);
-    await expect(countItems({ tags: ['rust'], archived: false })).resolves.toBe(1);
-    await expect(countItems({ favorite: true, tags: ['rust'] })).resolves.toBe(1);
+    const toggled = await toggleItem(item.id, 'favorite');
+
+    // Computing `!item.favorite` from the stale copy would have written `true` again.
+    expect(toggled.favorite).toBe(false);
+  });
+
+  it('keeps the archive index key in step', async () => {
+    const item = await saveItem({ url: 'https://example.com/a' });
+    const archived = await toggleItem(item.id, 'archived');
+
+    expect(archived.archived).toBe(true);
+    expect(archived.archivedKey).toBe(1);
+    expect(archived.updatedAt).toBeGreaterThanOrEqual(item.updatedAt);
+  });
+
+  it('throws for an item that is gone', async () => {
+    await expect(toggleItem('no-such-id', 'favorite')).rejects.toThrow(/no item/);
   });
 });
 
@@ -506,7 +431,45 @@ describe('migrations', () => {
     expect(highlight).toMatchObject({ text: 'a quote', note: 'a note', start: 0, end: 0, prefix: '' });
   });
 
-  /** A synthetic version 6: we add a field to every item, deleting nothing. */
+  it('version 6 adds an empty sync base and leaves the items alone', async () => {
+    const v5 = await openDb({ version: 5 });
+    await v5.put('items', {
+      id: 'legacy',
+      url: 'https://example.com/a',
+      resolvedUrl: 'https://example.com/a',
+      title: 'Kept',
+      excerpt: '',
+      byline: null,
+      siteName: null,
+      lang: null,
+      wordCount: 0,
+      estReadingMinutes: 1,
+      savedAt: 1_000,
+      updatedAt: 1_000,
+      readAt: null,
+      archived: false,
+      favorite: false,
+      tags: ['rust'],
+      contentHash: null,
+      status: 'ready',
+      readingProgress: 0,
+      archivedKey: 0,
+    });
+    v5.close();
+
+    const db = await openDb();
+    expect(db.objectStoreNames.contains('syncBase')).toBe(true);
+    await expect(db.count('syncBase')).resolves.toBe(0);
+    await expect(getItem('legacy')).resolves.toMatchObject({ title: 'Kept', tags: ['rust'] });
+  });
+
+  /**
+   * One past the current schema. Written relative to `DB_VERSION` so the next
+   * real migration does not turn these tests into opening the database as it is.
+   */
+  const NEXT_VERSION = DB_VERSION + 1;
+
+  /** A synthetic next version: we add a field to every item, deleting nothing. */
   const addFlag: Migration = async (_db, tx) => {
     const store = tx.objectStore('items');
     let cursor = await store.openCursor();
@@ -517,7 +480,7 @@ describe('migrations', () => {
     }
   };
 
-  it('raising the version 5 -> 6 adds a field and deletes no data', async () => {
+  it('raising the version by one adds a field and deletes no data', async () => {
     const first = await saveItem({
       url: 'https://example.com/a',
       title: 'First',
@@ -535,16 +498,17 @@ describe('migrations', () => {
 
     await closeDb();
 
-    const db = await openDb({ version: 6, migrations: { 6: addFlag } });
+    const db = await openDb({ version: NEXT_VERSION, migrations: { [NEXT_VERSION]: addFlag } });
 
     try {
-      expect(db.version).toBe(6);
+      expect(db.version).toBe(NEXT_VERSION);
       expect([...db.objectStoreNames].sort()).toEqual([
         'contents',
         'favicons',
         'highlights',
         'items',
         'snapshots',
+        'syncBase',
         'tombstones',
       ]);
 
@@ -583,7 +547,7 @@ describe('migrations', () => {
     await saveItem({ url: 'https://example.com/a', title: 'Stays' });
     await closeDb();
 
-    await expect(openDb({ version: 6, migrations: {} })).rejects.toThrow();
+    await expect(openDb({ version: NEXT_VERSION, migrations: {} })).rejects.toThrow();
 
     // The data is still in place.
     await expect(countItems()).resolves.toBe(1);
@@ -873,5 +837,44 @@ describe('dataStats and clearAllData', () => {
 
     expect(await dataStats()).toMatchObject({ items: 0, contents: 0, snapshots: 0 });
     await expect(saveItem({ url: 'https://b.example/2' })).resolves.toBeDefined();
+  });
+});
+
+describe('applySync', () => {
+  it('keeps the id of every highlight that survives, so an open reader still points at it', async () => {
+    const item = await saveItem({ url: 'https://example.com/a' });
+    const kept = await addHighlight({ itemId: item.id, text: 'kept', start: 0, end: 4 });
+    await addHighlight({ itemId: item.id, text: 'gone', start: 5, end: 9 });
+
+    const { id: _id, archivedKey: _key, ...fields } = item;
+    await applySync({
+      writes: [
+        {
+          item: fields,
+          content: null,
+          highlights: [
+            {
+              text: 'kept',
+              note: 'a note from the other side',
+              createdAt: kept.createdAt,
+              start: 0,
+              end: 4,
+              prefix: '',
+              suffix: '',
+            },
+            { text: 'new', note: null, createdAt: 1, start: 10, end: 13, prefix: '', suffix: '' },
+          ],
+        },
+      ],
+      deleteUrls: [],
+      tombstones: [],
+    });
+
+    const after = await listHighlights(item.id);
+    expect(after.map((entry) => entry.text).sort()).toEqual(['kept', 'new']);
+    expect(after.find((entry) => entry.text === 'kept')).toMatchObject({
+      id: kept.id,
+      note: 'a note from the other side',
+    });
   });
 });

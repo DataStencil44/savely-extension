@@ -35,6 +35,7 @@ export {
   SYNC_ALARM,
   SYNC_INTERVAL_MINUTES,
   applyAutoSync,
+  disconnectSync,
   loadSyncState,
   parseSyncState,
   saveSyncState,

@@ -65,7 +65,7 @@ function remoteItem(overrides: Partial<SyncItem> & Pick<SyncItem, 'url'>): SyncI
 }
 
 function local(state: Partial<SyncLocalState> = {}): SyncLocalState {
-  return { items: [], contents: [], highlights: [], tombstones: [], ...state };
+  return { items: [], contents: [], highlights: [], tombstones: [], base: [], ...state };
 }
 
 function remote(payload: Partial<SyncPayload> = {}): SyncPayload {
@@ -317,5 +317,129 @@ describe('identity by address', () => {
 
     expect(result.payload.items).toHaveLength(1);
     expect(result.payload.items[0]?.tags).toEqual(['local', 'remote']);
+  });
+});
+
+describe('removals, measured against the base', () => {
+  const QUOTE = { text: 'a quote', createdAt: 1_000, start: 0, end: 7, prefix: '', suffix: '' };
+
+  function localHighlight(note: string | null): Highlight {
+    return { ...QUOTE, id: 'h1', itemId: `local-${URL_A}`, note };
+  }
+
+  function base(
+    tags: string[],
+    highlights: { text: string; note: string | null; start: number; end: number }[] = [],
+  ): SyncLocalState['base'] {
+    return [{ url: URL_A, tags, highlights }];
+  }
+
+  it('a tag removed here stays removed, however much the other side still has it', () => {
+    const result = merge(
+      local({
+        items: [localItem({ url: URL_A, tags: [], updatedAt: 2_000 })],
+        base: base(['rust']),
+      }),
+      remote({ items: [remoteItem({ url: URL_A, tags: ['rust'], updatedAt: 1_000 })] }),
+    );
+
+    expect(result.payload.items[0]?.tags).toEqual([]);
+  });
+
+  it('a tag removed on the other side is removed here', () => {
+    const result = merge(
+      local({ items: [localItem({ url: URL_A, tags: ['rust'] })], base: base(['rust']) }),
+      remote({ items: [remoteItem({ url: URL_A, tags: [], updatedAt: 2_000 })] }),
+    );
+
+    expect(result.plan.writes[0]?.item.tags).toEqual([]);
+  });
+
+  it('a tag added on either side since the base is kept', () => {
+    const result = merge(
+      local({ items: [localItem({ url: URL_A, tags: ['mine', 'rust'] })], base: base(['rust']) }),
+      remote({ items: [remoteItem({ url: URL_A, tags: ['rust', 'theirs'], updatedAt: 2_000 })] }),
+    );
+
+    expect(result.payload.items[0]?.tags).toEqual(['mine', 'rust', 'theirs']);
+  });
+
+  it('a highlight deleted on the other side is deleted here', () => {
+    const result = merge(
+      local({
+        items: [localItem({ url: URL_A })],
+        highlights: [localHighlight(null)],
+        base: base([], [{ ...QUOTE, note: null }]),
+      }),
+      remote({ items: [remoteItem({ url: URL_A, highlights: [] })] }),
+    );
+
+    expect(result.plan.writes[0]?.highlights).toEqual([]);
+    expect(result.payload.items[0]?.highlights).toEqual([]);
+  });
+
+  it('a highlight deleted here does not come back from the other side', () => {
+    const result = merge(
+      local({ items: [localItem({ url: URL_A })], base: base([], [{ ...QUOTE, note: null }]) }),
+      remote({ items: [remoteItem({ url: URL_A, highlights: [{ ...QUOTE, note: null }] })] }),
+    );
+
+    expect(result.payload.items[0]?.highlights).toEqual([]);
+    expect(result.plan.writes).toEqual([]);
+  });
+
+  it('a note edited on one side survives the highlight being deleted on the other', () => {
+    const result = merge(
+      local({ items: [localItem({ url: URL_A })], base: base([], [{ ...QUOTE, note: 'old' }]) }),
+      remote({ items: [remoteItem({ url: URL_A, highlights: [{ ...QUOTE, note: 'new' }] })] }),
+    );
+
+    expect(result.payload.items[0]?.highlights.map((entry) => entry.note)).toEqual(['new']);
+  });
+
+  it('a note cleared here stays cleared', () => {
+    const result = merge(
+      local({
+        items: [localItem({ url: URL_A })],
+        highlights: [localHighlight(null)],
+        base: base([], [{ ...QUOTE, note: 'a note' }]),
+      }),
+      remote({ items: [remoteItem({ url: URL_A, highlights: [{ ...QUOTE, note: 'a note' }] })] }),
+    );
+
+    expect(result.payload.items[0]?.highlights.map((entry) => entry.note)).toEqual([null]);
+  });
+
+  it('a note changed on the other side arrives here', () => {
+    const result = merge(
+      local({
+        items: [localItem({ url: URL_A })],
+        highlights: [localHighlight('a note')],
+        base: base([], [{ ...QUOTE, note: 'a note' }]),
+      }),
+      remote({ items: [remoteItem({ url: URL_A, highlights: [{ ...QUOTE, note: 'rewritten' }] })] }),
+    );
+
+    expect(result.plan.writes[0]?.highlights?.map((entry) => entry.note)).toEqual(['rewritten']);
+  });
+
+  it('with nothing on the other side the base means nothing', () => {
+    const result = merge(
+      local({ items: [localItem({ url: URL_A, tags: ['rust'] })], base: base(['rust', 'gone']) }),
+      null,
+    );
+
+    expect(result.payload.items[0]?.tags).toEqual(['rust']);
+  });
+
+  it('hands back the base for the next merge - what is being pushed', () => {
+    const result = merge(
+      local({ items: [localItem({ url: URL_A, tags: ['rust'] })], highlights: [localHighlight('n')] }),
+      null,
+    );
+
+    expect(result.base).toEqual([
+      { url: URL_A, tags: ['rust'], highlights: [{ text: 'a quote', note: 'n', start: 0, end: 7 }] },
+    ]);
   });
 });

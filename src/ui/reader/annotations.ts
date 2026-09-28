@@ -19,7 +19,7 @@ import {
   listHighlights,
   updateHighlight,
   type Highlight,
-} from '@/lib/db';
+} from '@/lib/library';
 
 import {
   buildTextMap,
@@ -88,6 +88,20 @@ export class Annotations {
     if (lost > 0) {
       this.#notify(`Could not restore ${String(lost)} highlight(s) - the content has changed.`);
     }
+  }
+
+  /**
+   * Re-reads the highlights after a change elsewhere - a sync, or this article
+   * open in another tab - and repaints the marks. Quiet about any that no
+   * longer anchor: `load` already said so once.
+   */
+  async reload(): Promise<void> {
+    if (this.#itemId === null) return;
+    const next = await listHighlights(this.#itemId);
+
+    for (const highlight of this.#highlights) unwrapHighlight(this.#article, highlight.id);
+    this.#highlights = next;
+    for (const highlight of next) this.#paint(highlight);
   }
 
   /** Whether the popover is on screen - Escape and the `h` shortcut both ask. */

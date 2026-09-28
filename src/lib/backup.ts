@@ -9,7 +9,7 @@
  * The whole module is pure: no IndexedDB, no `browser.*`, no DOM. The input is
  * a string from a file, the output is validated records or a report of
  * problems - writing to the database is left to `importDump` in
- * `src/lib/db.ts`, in a single transaction.
+ * `src/lib/db/transfer.ts`, in a single transaction.
  *
  * An imported file is treated as external data (CLAUDE.md 3): it arrives as
  * `unknown`, every field is checked, and whatever we do not understand lands in
@@ -17,9 +17,8 @@
  */
 import { estimateReadingMinutes } from '@/types/article';
 
+import { normalizeTags, normalizeUrl } from './url';
 import {
-  normalizeTags,
-  normalizeUrl,
   type DatabaseDump,
   type Highlight,
   type ItemContent,

@@ -15,7 +15,7 @@
 import browser from 'webextension-polyfill';
 
 import { announceChange } from '../changes';
-import { DB_VERSION, applySync, collectForSync } from '../db';
+import { DB_VERSION, applySync, clearSyncBase, collectForSync, saveSyncBase } from '../db';
 
 import { mergeStates } from './merge';
 import { buildFiles, parseFiles } from './payload';
@@ -159,6 +159,10 @@ export async function syncNow(provider: SyncProvider): Promise<SyncReport> {
     if (outcome.added + outcome.updated + outcome.deleted > 0) announceChange();
 
     const revision = await provider.push(await buildFiles(merged.payload), remote.revision);
+    // Only now do both sides hold the same thing. Stored earlier, a failed push
+    // would leave a base ahead of the remote, and the next merge would read what
+    // the remote never received as removed there.
+    await saveSyncBase(merged.base);
 
     const report: SyncReport = {
       at: now,
@@ -184,4 +188,23 @@ export async function syncNow(provider: SyncProvider): Promise<SyncReport> {
     await saveSyncState({ lastError: errorMessage(error) });
     throw error;
   }
+}
+
+/**
+ * Cuts this device off from the provider: the credentials go, the alarm stops,
+ * and the base goes too. The base describes the remote this device agreed with;
+ * connected later to a different one, everything that remote lacks would look
+ * removed on purpose. The data on the other side is left alone.
+ */
+export async function disconnectSync(provider: SyncProvider): Promise<void> {
+  await provider.disconnect();
+  await applyAutoSync(false);
+  await clearSyncBase();
+  await saveSyncState({
+    providerId: null,
+    auto: false,
+    revision: null,
+    lastReport: null,
+    lastError: null,
+  });
 }

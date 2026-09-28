@@ -9,7 +9,7 @@
  * stays untouched.
  *
  * Serialization, compression and merging are handled by `payload.ts` and
- * `merge.ts`, and writing to the database by `applySync` in `src/lib/db.ts`.
+ * `merge.ts`, and writing to the database by `applySync` in `src/lib/db/sync.ts`.
  */
 
 /** File name -> its text content. The provider never looks inside. */

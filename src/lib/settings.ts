@@ -44,7 +44,12 @@ export const COLUMN_WIDTH_RANGE = { min: 48, max: 92 } as const;
 const STORAGE_KEY = 'reader-settings';
 
 const FAMILIES: readonly string[] = ['serif', 'sans', 'dyslexia'];
-const THEMES: readonly string[] = ['light', 'dark', 'sepia', 'auto'];
+const THEMES: readonly Theme[] = ['light', 'dark', 'sepia', 'auto'];
+
+/** For a theme name read out of the page (a `data-` attribute) rather than typed in code. */
+export function isTheme(value: unknown): value is Theme {
+  return THEMES.some((theme) => theme === value);
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(Math.round(value), min), max);
@@ -77,7 +82,7 @@ export function parseSettings(value: unknown): ReaderSettings {
       typeof columnWidth === 'number' && Number.isFinite(columnWidth)
         ? clamp(columnWidth, COLUMN_WIDTH_RANGE.min, COLUMN_WIDTH_RANGE.max)
         : DEFAULT_SETTINGS.columnWidth,
-    theme: typeof theme === 'string' && THEMES.includes(theme) ? (theme as Theme) : DEFAULT_SETTINGS.theme,
+    theme: isTheme(theme) ? theme : DEFAULT_SETTINGS.theme,
     remoteImages: typeof remoteImages === 'boolean' ? remoteImages : DEFAULT_SETTINGS.remoteImages,
   };
 }

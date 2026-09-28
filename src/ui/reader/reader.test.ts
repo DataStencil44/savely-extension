@@ -10,6 +10,11 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import html from './index.html?raw';
 
+type ChangeListener = (changes: Record<string, { newValue?: unknown }>, area: string) => void;
+
+/** `storage.onChanged` subscribers, so a test can play another tab writing. */
+const changeListeners = vi.hoisted((): ChangeListener[] => []);
+
 const settingsStore = vi.hoisted(() => {
   const data: Record<string, unknown> = {};
   const noop = (): void => undefined;
@@ -42,7 +47,11 @@ const settingsStore = vi.hoisted(() => {
             callback();
           },
         },
-        onChanged: { addListener: noop },
+        onChanged: {
+          addListener: (listener: ChangeListener) => {
+            changeListeners.push(listener);
+          },
+        },
       },
       tabs: {
         create: noop,
@@ -57,7 +66,8 @@ const settingsStore = vi.hoisted(() => {
   return data;
 });
 
-const { addHighlight, deleteDb, getItem, saveItem, setContent } = await import('@/lib/db');
+const { addHighlight, deleteDb, deleteHighlight, getItem, listHighlights, saveItem, setContent } =
+  await import('@/lib/db');
 
 const ARTICLE = [
   '<p>The city council adopted a resolution changing traffic patterns in the centre.</p>',
@@ -207,5 +217,21 @@ describe('the reader', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(favorite?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('repaints the highlights when another context changes them', async () => {
+    const [stored] = await listHighlights(itemId);
+    if (stored === undefined) throw new Error('missing test data');
+    // Another tab (or a sync) removes the stored highlight and adds one of its own.
+    await deleteHighlight(stored.id);
+    await addHighlight({ itemId, text: 'pavements', start: 138, end: 147 });
+
+    for (const listener of changeListeners) {
+      listener({ 'savely:changed': { newValue: { at: Date.now(), source: 'another-tab' } } }, 'local');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const marks = [...document.querySelectorAll('mark[data-highlight]')].map((mark) => mark.textContent);
+    expect(marks).toEqual(['pavements']);
   });
 });

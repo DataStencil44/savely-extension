@@ -2,6 +2,22 @@
  * ESLint (.eslintrc format) - the file has a .cjs extension because package.json
  * declares "type": "module", while ESLint 8 loads its config through require().
  */
+// Anything two pages need lives in `src/ui/shared/`. Without this rule the
+// shared module ends up in whichever page happened to need it first, and the
+// other pages import *that* - which is how `toast.ts` and `format.ts` came to
+// live in `ui/list/` and be imported by the options page and the reader.
+const NO_CROSS_PAGE_IMPORTS = {
+  group: [
+    '@/ui/list/*',
+    '@/ui/reader/*',
+    '@/ui/options/*',
+    '../list/*',
+    '../reader/*',
+    '../options/*',
+  ],
+  message: 'A page must not import from another page. Shared UI code belongs in `src/ui/shared/`.',
+};
+
 module.exports = {
   root: true,
   env: {
@@ -91,32 +107,31 @@ module.exports = {
   },
   overrides: [
     {
-      // Anything two pages need lives in `src/ui/shared/`. Without this rule the
-      // shared module ends up in whichever page happened to need it first, and
-      // the other pages import *that* - which is how `toast.ts` and `format.ts`
-      // came to live in `ui/list/` and be imported by the options page and the
-      // reader.
       files: ['src/ui/**/*.ts'],
+      excludedFiles: ['**/*.test.ts'],
       rules: {
         'no-restricted-imports': [
           'error',
           {
-            patterns: [
+            // A page reaches the database through `@/lib/library`, whose writes
+            // tell the other open pages about themselves (CLAUDE.md 4.12). A
+            // write taken straight from `@/lib/db` leaves them showing old data.
+            paths: [
               {
-                group: [
-                  '@/ui/list/*',
-                  '@/ui/reader/*',
-                  '@/ui/options/*',
-                  '../list/*',
-                  '../reader/*',
-                  '../options/*',
-                ],
-                message:
-                  'A page must not import from another page. Shared UI code belongs in `src/ui/shared/`.',
+                name: '@/lib/db',
+                message: 'Pages use `@/lib/library` - its writes announce the change to other pages.',
               },
             ],
+            patterns: [NO_CROSS_PAGE_IMPORTS],
           },
         ],
+      },
+    },
+    {
+      // Tests set the database up directly; nothing is on screen to announce to.
+      files: ['src/ui/**/*.test.ts'],
+      rules: {
+        'no-restricted-imports': ['error', { patterns: [NO_CROSS_PAGE_IMPORTS] }],
       },
     },
     {

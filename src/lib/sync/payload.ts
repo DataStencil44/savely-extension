@@ -10,7 +10,7 @@
  * been hand-edited in the gist, may come from an older version of the extension
  * or from an entirely different program. Every field is validated.
  */
-import { normalizeTags, normalizeUrl } from '../db';
+import { normalizeTags, normalizeUrl } from '../url';
 
 import { gunzipFromBase64, gzipToBase64 } from './compress';
 import {

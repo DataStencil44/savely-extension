@@ -44,8 +44,18 @@ vi.hoisted(() => {
   });
 });
 
-const { addHighlight, deleteDb, deleteItem, getContent, getItemByUrl, listHighlights, saveItem, setContent, updateItem } =
-  await import('../db');
+const {
+  addHighlight,
+  deleteDb,
+  deleteHighlight,
+  deleteItem,
+  getContent,
+  getItemByUrl,
+  listHighlights,
+  saveItem,
+  setContent,
+  updateItem,
+} = await import('../db');
 const { parseSyncState, syncNow } = await import('./engine');
 const { METADATA_FILE } = await import('./types');
 
@@ -175,6 +185,75 @@ describe('a full pass', () => {
     expect(merged?.favorite).toBe(true);
     // The tags are the union of both sides, even though one side won the item.
     expect(merged?.tags).toEqual(['local', 'remote']);
+  });
+});
+
+/** What another device would push: the remote metadata, edited in place. */
+function editRemote(
+  provider: MemoryProvider,
+  edit: (item: { tags: string[]; updatedAt: number; highlights: unknown[] }) => void,
+): void {
+  const file = provider.files?.[METADATA_FILE];
+  if (provider.files === null || file === undefined) throw new Error('nothing was pushed');
+  const metadata = JSON.parse(file) as {
+    items: { tags: string[]; updatedAt: number; highlights: unknown[] }[];
+  };
+  const [item] = metadata.items;
+  if (item === undefined) throw new Error('no item on the other side');
+  edit(item);
+  provider.files = { ...provider.files, [METADATA_FILE]: JSON.stringify(metadata) };
+  provider.revision = 'edited-elsewhere';
+}
+
+describe('removals', () => {
+  it('a tag and a highlight removed here stay removed after the next sync', async () => {
+    const provider = new MemoryProvider();
+    const item = await saveItem({ url: URL_A, tags: ['rust', 'web'] });
+    const highlight = await addHighlight({ itemId: item.id, text: 'a quote', start: 0, end: 7 });
+    await syncNow(provider);
+
+    await updateItem(item.id, { tags: ['web'] });
+    await deleteHighlight(highlight.id);
+    await syncNow(provider);
+
+    expect((await getItemByUrl(URL_A))?.tags).toEqual(['web']);
+    expect(await listHighlights(item.id)).toEqual([]);
+    expect(provider.files?.[METADATA_FILE]).not.toContain('"rust"');
+    expect(provider.files?.[METADATA_FILE]).not.toContain('a quote');
+  });
+
+  it('a tag and a highlight removed on another device are removed here', async () => {
+    const provider = new MemoryProvider();
+    const item = await saveItem({ url: URL_A, tags: ['rust', 'web'] });
+    await addHighlight({ itemId: item.id, text: 'a quote', start: 0, end: 7 });
+    await syncNow(provider);
+
+    editRemote(provider, (remote) => {
+      remote.tags = ['web'];
+      remote.highlights = [];
+      remote.updatedAt += 1_000;
+    });
+    await syncNow(provider);
+
+    expect((await getItemByUrl(URL_A))?.tags).toEqual(['web']);
+    expect(await listHighlights(item.id)).toEqual([]);
+  });
+
+  it('a push that fails leaves the base where it was', async () => {
+    const provider = new MemoryProvider();
+    const item = await saveItem({ url: URL_A, tags: ['rust'] });
+    await syncNow(provider);
+
+    // Added here; the push that would carry it fails.
+    await updateItem(item.id, { tags: ['rust', 'new'] });
+    const push = vi.spyOn(provider, 'push').mockRejectedValueOnce(new Error('offline'));
+    await expect(syncNow(provider)).rejects.toThrow('offline');
+    push.mockRestore();
+
+    // Had the base taken 'new' in, the remote's lack of it would now read as a
+    // removal over there, and the tag would be dropped here.
+    await syncNow(provider);
+    expect((await getItemByUrl(URL_A))?.tags).toEqual(['new', 'rust']);
   });
 });
 

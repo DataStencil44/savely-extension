@@ -7,11 +7,12 @@
  * action (wiping) requires confirmation in a dialog.
  *
  * File parsing and validation live in `src/lib/backup.ts`, writing in
- * `src/lib/db.ts` - what stays here is the view and the report of what happened.
+ * `src/lib/library.ts` - what stays here is the view and the report of what
+ * happened.
  */
 import browser from 'webextension-polyfill';
 
-import { announceChange, onDataChanged } from '@/lib/changes';
+import { onDataChanged } from '@/lib/changes';
 import {
   ImportError,
   backupFileName,
@@ -35,11 +36,12 @@ import {
   listSnapshots,
   restoreSnapshot,
   type MergeOutcome,
-} from '@/lib/db';
-import { type Theme } from '@/lib/settings';
+} from '@/lib/library';
+import { isTheme, type Theme } from '@/lib/settings';
 import {
   SYNC_INTERVAL_MINUTES,
   applyAutoSync,
+  disconnectSync,
   getProvider,
   listProviders,
   loadSyncState,
@@ -278,7 +280,6 @@ async function importFile(file: File): Promise<void> {
   // All or nothing: `importDump` runs a single transaction, so a failure
   // halfway through does not leave the database half-imported.
   const outcome = await importDump(plan.dump);
-  announceChange();
   renderReport(file.name, plan, outcome);
   toast(`Imported ${numbers.format(outcome.added + outcome.merged)} items.`);
   await refresh();
@@ -399,7 +400,7 @@ async function runSync(): Promise<void> {
   }
 }
 
-async function disconnectSync(): Promise<void> {
+async function onDisconnect(): Promise<void> {
   const provider = selectedProvider();
   if (provider === null) return;
 
@@ -409,9 +410,7 @@ async function disconnectSync(): Promise<void> {
   );
   if (!ok) return;
 
-  await provider.disconnect();
-  await applyAutoSync(false);
-  await saveSyncState({ providerId: null, auto: false, revision: null, lastReport: null, lastError: null });
+  await disconnectSync(provider);
   await renderSync();
   toast('Disconnected.');
 }
@@ -469,7 +468,6 @@ async function restoreFromSnapshot(id: string, createdAt: number): Promise<void>
   if (!ok) return;
 
   const outcome = await restoreSnapshot(id);
-  announceChange();
   toast(
     `Restored: ${numbers.format(outcome.added)} items brought back, ${numbers.format(outcome.merged)} filled in.`,
   );
@@ -527,7 +525,6 @@ async function wipe(): Promise<void> {
   if (!ok) return;
 
   await clearAllData();
-  announceChange();
   toast('The database has been cleared.');
   await refresh();
 }
@@ -550,8 +547,8 @@ function showTheme(theme: Theme): void {
 function wireThemes(): void {
   for (const button of el.themes) {
     button.addEventListener('click', () => {
-      const choice = button.dataset['themeChoice'] as Theme | undefined;
-      if (choice === undefined) return;
+      const choice = button.dataset['themeChoice'];
+      if (!isTheme(choice)) return;
       showTheme(choice);
       void setTheme(choice);
     });
@@ -611,7 +608,7 @@ function wire(): void {
     void runSync();
   });
   el.syncDisconnect.addEventListener('click', () => {
-    void disconnectSync();
+    void onDisconnect();
   });
   el.syncAuto.addEventListener('change', () => {
     void toggleAutoSync(el.syncAuto.checked);
