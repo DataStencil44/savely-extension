@@ -46,7 +46,6 @@ describe('SearchIndex', () => {
     index.setText('a', 'The inspectorate announced audits in primary schools.');
     expect(index.search('inspectorate')).toEqual(['a']);
 
-    // The metadata does not disappear once content is added.
     expect(index.search('school')).toEqual(['a']);
   });
 

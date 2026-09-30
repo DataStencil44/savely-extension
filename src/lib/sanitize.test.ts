@@ -1,23 +1,10 @@
 // @vitest-environment jsdom
-/**
- * XSS vectors at the security boundary.
- *
- * `extract.test.ts` checks that sanitization lets through what it should. This
- * file does the other half of the job: it takes a set of classic payloads and
- * makes sure not one of them comes out the far side. This is the only place
- * where someone else's HTML enters our origin (CLAUDE.md 3), so the list grows
- * with every new idea, not with every reported bug.
- *
- * The assertions run over the DOM, not over a string: what matters is what ends
- * up in the tree after `append()`, not how the HTML text looks.
- */
 import { describe, expect, it } from 'vitest';
 
 import { sanitizeArticleHtml, sanitizeToFragment } from './sanitize';
 
 const BASE = 'https://daily.example/section/article';
 
-/** The schemes allowed to appear in the finished tree. */
 const SAFE_SCHEME = /^(https?:|data:image\/)/;
 
 interface Findings {
@@ -26,7 +13,6 @@ interface Findings {
   urls: string[];
 }
 
-/** Collects everything from the fragment that could execute anything. */
 function scan(html: string): Findings {
   const fragment = sanitizeToFragment(html, BASE);
   const host = document.createElement('div');
@@ -49,7 +35,6 @@ function scan(html: string): Findings {
   return findings;
 }
 
-/** The shared verdict: no scripts, no handlers, no odd schemes. */
 function expectHarmless(html: string): Findings {
   const findings = scan(html);
 
@@ -101,8 +86,6 @@ describe('XSS vectors', () => {
     it(`blocks: ${vector.name}`, () => {
       expectHarmless(vector.payload);
 
-      // The same content down the other path - the string one, used when
-      // writing to the database.
       const clean = sanitizeArticleHtml(vector.payload, BASE).html.toLowerCase();
       expect(clean).not.toContain('<script');
       expect(clean).not.toContain('javascript:');
@@ -126,7 +109,6 @@ describe('what survives sanitization', () => {
     const findings = scan(`<img src="${pixel}" alt="pixel" /><a href="${pixel}">click</a>`);
 
     expect(findings.urls).toEqual([pixel]);
-    // The link stays, but without an address - there is nowhere to click to.
     expect(findings.tags).toEqual(['img', 'a']);
   });
 

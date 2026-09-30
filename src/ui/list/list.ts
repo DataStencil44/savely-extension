@@ -1,48 +1,26 @@
-/**
- * The list of saved items - the same file drives the popup and the full page
- * (`list.html?full=1`). The differences live in one place (`MODE` below):
- * the popup is capped at 600 px, shows the 20 most recent items and ends with
- * a "See all" button.
- *
- * Every item (without content) is loaded into memory once and filtered there -
- * metadata for 5000 articles is a few megabytes, which makes switching a tab
- * or a tag instant. Content is read on demand only, for the search index.
- *
- * What is on screen and why is `store.ts`; this file is the wiring between it
- * and the document. The store answers with a view, the page draws the view,
- * and every change goes back through the store - so there is one place that
- * decides what the list contains and one place that puts it on screen.
- *
- * The item actions live in the toolbar in the top bar, not on the cards: a
- * click selects a card, the toolbar acts on the selection, and a double click
- * opens the original.
- */
 import browser from 'webextension-polyfill';
 
 import { onDataChanged } from '@/lib/changes';
 import { faviconKey } from '@/lib/favicon';
 import {
-  deleteItem,
   getContents,
   listAllItems,
-  listContentIds,
   listFavicons,
-  restoreItem,
   toggleItem,
   updateItem,
-  type RemovedItem,
   type SavedItem,
 } from '@/lib/library';
-import { isSaveResultMessage } from '@/lib/guards';
+import { sendMessage } from '@/lib/messaging';
 import { DEFAULT_SETTINGS, type Theme } from '@/lib/settings';
 import { THEME_ICONS, THEME_LABELS, initTheme, nextTheme, setTheme } from '@/lib/theme';
 import { SAVE_ACTIVE_TAB } from '@/types/messages';
 import { required } from '@/ui/shared/dom';
-import { showToast } from '@/ui/shared/toast';
 
 import { CARD_LAYOUT, createCard, type CardCallbacks } from './cards';
 import { tagChip } from './chips';
+import { bindingFor, type ItemCommand, type PageCommand } from './keys';
 import { parseQuery } from './query';
+import { createRemoval } from './removal';
 import { ListStore, type ListView, type TabId } from './store';
 import { closeTagEditor, openTagEditor } from './tags';
 import { computeWindow, scrollTopFor } from './window';
@@ -50,8 +28,6 @@ import { computeWindow, scrollTopFor } from './window';
 const OVERSCAN = 4;
 const POPUP_LIMIT = 20;
 const SEARCH_DEBOUNCE_MS = 150;
-const UNDO_MS = 5_000;
-/** Content batch size while building the index - small enough to keep the UI responsive. */
 const INDEX_BATCH = 150;
 
 const MODE: 'popup' | 'full' =
@@ -59,27 +35,6 @@ const MODE: 'popup' | 'full' =
 
 const store = new ListStore(MODE === 'popup' ? { limit: POPUP_LIMIT } : {});
 
-interface PendingDelete {
-  item: SavedItem;
-  /** What the database gave back when it removed the item - what Undo puts in again. */
-  removed: Promise<RemovedItem | null>;
-}
-
-/**
- * Deletions still inside their undo window. Not in the store: what is on screen
- * is decided the moment the item goes, and this is only what it would take to
- * bring it back.
- */
-const pending = new Map<string, PendingDelete>();
-
-/**
- * Row height is a contract between the CSS and the virtualization: the popup
- * has a compact card and the full page a taller one. That is why the value
- * lives in CSS (`--row-h`) and is only read here - and re-read on resize.
- *
- * Read off `body`, not `:root`: the mode is an attribute on `body`, so that is
- * where the popup's override sits.
- */
 function readRowHeight(): number {
   const raw = getComputedStyle(document.body).getPropertyValue('--row-h');
   const parsed = Number.parseInt(raw.trim(), 10);
@@ -88,7 +43,6 @@ function readRowHeight(): number {
 
 let rowHeight = 104;
 
-/** domain -> `data:` URL, read once at startup; see `loadFavicons`. */
 let favicons = new Map<string, string>();
 
 const el = {
@@ -119,59 +73,33 @@ const el = {
   helpClose: required<HTMLButtonElement>('#help-close'),
 };
 
-// ---------------------------------------------------------------------------
-// Data
-// ---------------------------------------------------------------------------
-
-/**
- * All the icons in one read, before the first render.
- *
- * There is one row per domain rather than per item, so this is tens of rows
- * even for a database of thousands of articles - cheaper than the card-by-card
- * reads the lead-image thumbnail used to need, and it lands before the cards
- * are drawn, so nothing shifts a moment later.
- */
 async function loadFavicons(): Promise<void> {
   favicons = await listFavicons();
 }
 
-/**
- * Both reads before either lands in the store: handing the items over is what
- * draws the list, and a list drawn before the icons arrive would fill them in
- * a moment later, in front of the reader.
- */
-async function loadAll(): Promise<void> {
+async function loadAll(): Promise<string[]> {
   const [items] = await Promise.all([listAllItems(), loadFavicons()]);
-  store.setItems(items);
+  return store.setItems(items);
 }
 
-/**
- * The index is built in two stages: titles and excerpts first (the store has
- * them in memory, so search works immediately), then - on the full page only -
- * the content read from the database in batches. There is no reason for the
- * popup to pull in megabytes of content just to show 20 items.
- */
-async function indexContents(): Promise<void> {
-  const ids = await listContentIds();
+async function reload(): Promise<void> {
+  const stale = await loadAll();
+  if (MODE === 'full' && stale.length > 0) await indexContents(stale);
+}
 
+async function indexContents(ids: readonly string[]): Promise<void> {
   for (let offset = 0; offset < ids.length; offset += INDEX_BATCH) {
     const batch = await getContents(ids.slice(offset, offset + INDEX_BATCH));
     for (const content of batch) {
       store.setContentText(content.itemId, content.text);
     }
-    // Yield to the browser so the list stays responsive.
     await new Promise((resolve) => {
       setTimeout(resolve, 0);
     });
   }
 
-  // A search that ran against titles alone now has the content to go on.
   if (store.query !== '') store.refresh();
 }
-
-// ---------------------------------------------------------------------------
-// Rendering
-// ---------------------------------------------------------------------------
 
 let lastRange = { start: -1, end: -1 };
 
@@ -244,12 +172,6 @@ function setLabel(button: HTMLButtonElement, label: string): void {
   button.setAttribute('aria-label', label);
 }
 
-/**
- * The toolbar shows the selected item's state - the star is filled when it is
- * a favorite - and says which item that is, since the card itself may have
- * scrolled out of view. With nothing selected there is nothing to act on, so
- * the buttons are disabled and the title is empty.
- */
 function renderItemActions(): void {
   const item = store.selectedItem();
 
@@ -267,25 +189,18 @@ function renderItemActions(): void {
   el.itemArchive.setAttribute('aria-pressed', String(archived));
   setLabel(el.itemArchive, archived ? 'Restore from archive (a)' : 'Archive (a)');
 
-  // The tag editor recognizes the button of the item it is open for by this -
-  // a second press on it closes the panel instead of reopening it.
   if (item === undefined) delete el.itemTags.dataset['tagsFor'];
   else el.itemTags.dataset['tagsFor'] = item.id;
 
   el.itemTitle.textContent = item === undefined ? '' : item.title === '' ? item.url : item.title;
 }
 
-/** The store changed something; everything the change could have touched redraws. */
 function onViewChange(view: ListView): void {
   renderCounts(view);
   renderActiveTags();
   renderItemActions();
   render(true);
 }
-
-// ---------------------------------------------------------------------------
-// Site icons
-// ---------------------------------------------------------------------------
 
 function applyFavicon(card: HTMLLIElement, item: SavedItem): void {
   const domain = faviconKey(item.url);
@@ -298,26 +213,19 @@ function applyFavicon(card: HTMLLIElement, item: SavedItem): void {
   image.hidden = false;
 }
 
-// ---------------------------------------------------------------------------
-// Item actions
-// ---------------------------------------------------------------------------
-
 function extensionUrl(path: string): string {
   return browser.runtime.getURL(path);
 }
 
-/** Always a new tab: the reader and the original must not swallow the list they came from. */
 function openUrl(url: string): void {
   void browser.tabs.create({ url });
   if (MODE === 'popup') window.close();
 }
 
-/** An item came back from the database changed; the store puts it on screen. */
 function commit(updated: SavedItem): void {
   store.replace(updated);
 }
 
-// No read marking here - the reader decides that after reaching 90% of the content.
 function openReader(item: SavedItem): void {
   openUrl(`${extensionUrl('ui/reader/index.html')}?id=${encodeURIComponent(item.id)}`);
 }
@@ -334,7 +242,6 @@ function toggleFavorite(item: SavedItem): void {
   void toggleItem(item.id, 'favorite').then(commit);
 }
 
-/** The panel hangs off the toolbar's button, whether a press or `t` opened it. */
 function editTags(item: SavedItem): void {
   openTagEditor({
     host: el.tagEditor,
@@ -348,69 +255,14 @@ function editTags(item: SavedItem): void {
   });
 }
 
+const removeWithUndo = createRemoval(store, el.toast);
+
 const cardCallbacks: CardCallbacks = {
   openOriginal,
   filterByTag(tag) {
     store.addTag(tag);
   },
 };
-
-/**
- * The item leaves the screen and the database at once; the toast offers five
- * seconds to put it back.
- *
- * The other way round - the item held in memory and written off only when the
- * toast expires - is what the popup cannot support. A popup is usually gone
- * within a second of the click, and its `pagehide` handler cannot finish an
- * IndexedDB transaction on the way out: the deletion the user watched happen
- * was simply back in the list the next time they opened it.
- *
- * So the database is told immediately and `deleteItem` answers with the record
- * it removed, which is what Undo puts back - content, highlights, grave and
- * all.
- */
-function removeWithUndo(item: SavedItem): void {
-  store.remove(item.id);
-
-  const removed = deleteItem(item.id).catch((error: unknown) => {
-    // Nothing awaits this until Undo, and an unhandled rejection would take
-    // the whole handler down with it.
-    console.error('[savely] the deletion did not reach the database:', error);
-    return null;
-  });
-  pending.set(item.id, { item, removed });
-
-  showToast(el.toast, {
-    message: `Deleted “${item.title === '' ? item.url : item.title}”`,
-    durationMs: UNDO_MS,
-    action: {
-      label: 'Undo',
-      run: () => {
-        void undoRemoval(item.id);
-      },
-    },
-    onExpire: () => {
-      // Nothing to carry out any more - the deletion is long done.
-      pending.delete(item.id);
-    },
-  });
-}
-
-/** Puts the item back where it was, in the database first and then on screen. */
-async function undoRemoval(id: string): Promise<void> {
-  const entry = pending.get(id);
-  if (entry === undefined) return;
-  pending.delete(id);
-
-  const removed = await entry.removed;
-  if (removed !== null) await restoreItem(removed);
-
-  store.restore(entry.item);
-}
-
-// ---------------------------------------------------------------------------
-// Selection and keyboard
-// ---------------------------------------------------------------------------
 
 function select(position: number): void {
   const scroller = el.scroller;
@@ -431,17 +283,8 @@ function toggleHelp(): void {
   else el.help.showModal();
 }
 
-/**
- * What the search field does with what is in it: `tag:` tokens become filter
- * chips (`parseQuery`), the rest is searched for as words.
- *
- * `commitTrailing` is Enter - it finishes the token being typed, so a filter
- * can be applied without a trailing space.
- */
 function applySearchInput(commitTrailing = false): void {
   const parsed = parseQuery(el.search.value, commitTrailing);
-  // Only rewrite the field when something actually left it - otherwise the
-  // caret would jump to the end on every keystroke.
   if (parsed.tags.length > 0) el.search.value = parsed.text;
 
   el.scroller.scrollTop = 0;
@@ -453,13 +296,62 @@ function switchTab(tab: TabId): void {
   store.setTab(tab);
 }
 
-function onKeyDown(event: KeyboardEvent): void {
-  const target = event.target;
-  const typing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+function runPageCommand(command: PageCommand): void {
+  const view = store.view;
 
+  switch (command.kind) {
+    case 'focus-search':
+      el.search.focus();
+      return;
+    case 'toggle-help':
+      toggleHelp();
+      return;
+    case 'select': {
+      const positions = {
+        next: view.selected + 1,
+        previous: view.selected - 1,
+        first: 0,
+        last: view.visible.length - 1,
+      };
+      select(positions[command.to]);
+      return;
+    }
+    case 'tab':
+      switchTab(command.tab);
+      return;
+    case 'cycle-theme':
+      cycleTheme();
+      return;
+  }
+}
+
+function runItemCommand(command: ItemCommand, item: SavedItem): void {
+  switch (command) {
+    case 'open-reader':
+      openReader(item);
+      return;
+    case 'open-original':
+      openOriginal(item);
+      return;
+    case 'toggle-archive':
+      toggleArchive(item);
+      return;
+    case 'toggle-favorite':
+      toggleFavorite(item);
+      return;
+    case 'edit-tags':
+      editTags(item);
+      return;
+    case 'delete':
+      removeWithUndo(item);
+      return;
+  }
+}
+
+function onKeyDown(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
     closeTagEditor();
-    if (typing && target === el.search) {
+    if (event.target === el.search) {
       el.search.value = '';
       applySearchInput();
       el.search.blur();
@@ -467,97 +359,21 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
-  if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
+  const binding = bindingFor(event);
+  if (binding === undefined) return;
 
-  // A focused button answers Enter and Space itself, and the shortcut does not
-  // merely fire on top of it: `preventDefault` below cancels the click the
-  // browser was about to synthesize, so Enter on the delete button opened the
-  // reader and deleted nothing. Whoever tabbed to a button meant that button.
-  if ((event.key === 'Enter' || event.key === ' ') && target instanceof HTMLButtonElement) return;
+  if (binding.scope === 'page') {
+    if (binding.preventDefault) event.preventDefault();
+    runPageCommand(binding.command);
+    return;
+  }
 
-  const view = store.view;
   const item = store.selectedItem();
-
-  switch (event.key) {
-    case '/':
-      event.preventDefault();
-      el.search.focus();
-      return;
-    case '?':
-      event.preventDefault();
-      toggleHelp();
-      return;
-    case 'ArrowDown':
-      event.preventDefault();
-      select(view.selected + 1);
-      return;
-    case 'ArrowUp':
-      event.preventDefault();
-      select(view.selected - 1);
-      return;
-    case 'Home':
-      event.preventDefault();
-      select(0);
-      return;
-    case 'End':
-      event.preventDefault();
-      select(view.visible.length - 1);
-      return;
-    case '1':
-      switchTab('inbox');
-      return;
-    case '2':
-      switchTab('favorite');
-      return;
-    case '3':
-      switchTab('archive');
-      return;
-    case 'd':
-      cycleTheme();
-      return;
-    default:
-      break;
-  }
-
   if (item === undefined) return;
-
-  switch (event.key) {
-    case 'Enter':
-      event.preventDefault();
-      openReader(item);
-      break;
-    case 'o':
-      openOriginal(item);
-      break;
-    case 'a':
-      toggleArchive(item);
-      break;
-    case 'f':
-      toggleFavorite(item);
-      break;
-    case 't':
-      event.preventDefault();
-      editTags(item);
-      break;
-    case 'Delete':
-    case 'Backspace':
-      event.preventDefault();
-      removeWithUndo(item);
-      break;
-    default:
-      break;
-  }
+  if (binding.preventDefault) event.preventDefault();
+  runItemCommand(binding.command, item);
 }
 
-// ---------------------------------------------------------------------------
-// Theme
-// ---------------------------------------------------------------------------
-
-/**
- * The list has room for one button, so the switcher cycles instead of showing
- * four options: the glyph says where we are, the label says where the next
- * click goes. The theme itself is applied by `initTheme` on <html>.
- */
 let theme: Theme = DEFAULT_SETTINGS.theme;
 
 function showTheme(next: Theme): void {
@@ -570,16 +386,10 @@ function showTheme(next: Theme): void {
 }
 
 function cycleTheme(): void {
-  // The button redraws before the write lands - the switch has to feel instant,
-  // and `initTheme`'s listener corrects it if the write ends up somewhere else.
   const next = nextTheme(theme);
   showTheme(next);
   void setTheme(next);
 }
-
-// ---------------------------------------------------------------------------
-// Saving from the popup
-// ---------------------------------------------------------------------------
 
 function showStatus(message: string, tone: 'ok' | 'error'): void {
   el.status.textContent = message;
@@ -592,14 +402,13 @@ async function saveCurrentPage(): Promise<void> {
   showStatus('Saving…', 'ok');
 
   try {
-    const response: unknown = await browser.runtime.sendMessage({ type: SAVE_ACTIVE_TAB });
-    if (!isSaveResultMessage(response)) {
+    const response = await sendMessage({ type: SAVE_ACTIVE_TAB });
+    if (response === null) {
       showStatus('The background did not respond - please try again.', 'error');
       return;
     }
     showStatus(response.message, response.ok && !response.degraded ? 'ok' : 'error');
-    // A save from a new site also brings a new icon.
-    if (response.ok) await loadAll();
+    if (response.ok) await reload();
   } catch {
     showStatus('Could not reach the extension background.', 'error');
   } finally {
@@ -607,17 +416,6 @@ async function saveCurrentPage(): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Startup
-// ---------------------------------------------------------------------------
-
-/**
- * A toolbar button acts on whatever is selected at the moment of the press.
- *
- * The second click of a double click is not a second press. Delete and Archive
- * move the selection on to the next card, so a double click on either would
- * mean two items gone - and Undo only brings back the last one.
- */
 function onItemAction(button: HTMLButtonElement, run: (item: SavedItem) => void): void {
   button.addEventListener('click', (event) => {
     if (event.detail > 1) return;
@@ -645,8 +443,6 @@ function wireEvents(): void {
     }, SEARCH_DEBOUNCE_MS);
   });
 
-  // Enter turns the token being typed into a filter without waiting for the
-  // space - and without waiting for the debounce either.
   el.search.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
@@ -694,8 +490,6 @@ function wireEvents(): void {
 
   el.themeButton.addEventListener('click', cycleTheme);
 
-  // On Firefox for Android about:addons is the only alternative - hence the
-  // entry point to the options page from the list as well (CLAUDE.md 5.6).
   el.optionsButton.addEventListener('click', () => {
     void browser.runtime.openOptionsPage();
   });
@@ -711,20 +505,13 @@ async function main(): Promise<void> {
   wireEvents();
   store.subscribe(onViewChange);
 
-  // A save from the toolbar, an article archived in the reader, an import on
-  // the options page: whatever happened, this list is showing what it read at
-  // startup until it reads again.
   onDataChanged(() => {
-    void loadAll();
+    void reload();
   });
 
-  // Not awaited with the data: the theme is one storage read, and the list must
-  // not wait for it - `initTheme` also keeps the page in step with the reader.
   void initTheme(showTheme);
 
-  await loadAll();
-
-  if (MODE === 'full') void indexContents();
+  await reload();
 }
 
 void main();

@@ -1,18 +1,9 @@
 // @vitest-environment jsdom
-/**
- * An options-page test on jsdom: we mount the real `options.html`, run
- * `options.ts` and click the way a user would.
- *
- * What we check is what the unit tests cannot see: that an export downloads a
- * file with the right name, that importing a damaged file leaves the database
- * alone and says why, and that wiping the data requires confirmation.
- */
 import 'fake-indexeddb/auto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import html from './options.html?raw';
 
-/** The files handed to `downloads.download` - this is how we know what hit the disk. */
 const downloads = vi.hoisted(() => {
   const captured: { filename: string; url: string }[] = [];
   const noop = (): void => undefined;
@@ -26,7 +17,6 @@ const downloads = vi.hoisted(() => {
         lastError: null,
       },
       tabs: { create: noop },
-      // The sync section asks the provider about the connection state and the alarms.
       storage: {
         local: {
           get: (_keys: unknown, callback: (items: Record<string, unknown>) => void) => {
@@ -82,12 +72,10 @@ function text(selector: string): string {
   return document.querySelector<HTMLElement>(selector)?.textContent ?? '';
 }
 
-/** Hands over a file the way `<input type="file">` would after a selection. */
 async function importFile(name: string, content: string): Promise<void> {
   const input = document.querySelector<HTMLInputElement>('#import-file');
   if (input === null) throw new Error('no file input');
 
-  // jsdom does not allow building a FileList - we substitute a plain array.
   Object.defineProperty(input, 'files', {
     configurable: true,
     value: [new File([content], name, { type: 'text/plain' })],
@@ -99,7 +87,6 @@ async function importFile(name: string, content: string): Promise<void> {
 beforeAll(async () => {
   await deleteDb();
 
-  // jsdom implements neither <dialog> nor Blob URLs.
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
     configurable: true,
     value(this: HTMLDialogElement) {
@@ -135,7 +122,6 @@ beforeAll(async () => {
 describe('the options page', () => {
   it('shows the counters and the storage usage', () => {
     const values = [...document.querySelectorAll('.stat__value')].map((node) => node.textContent);
-    // items, to read, archived, favorites, with content, highlights
     expect(values).toEqual(['2', '2', '0', '0', '1', '0']);
     expect(text('#storage')).toBe('Storage used: 5.0 MB of 1.0 GB (0.5%).');
   });
@@ -145,7 +131,6 @@ describe('the options page', () => {
     expect(location).toContain('private Gist');
     expect(location).toContain('not encrypted either');
 
-    // With no connection the form is visible, not the panel with "Sync now".
     expect(document.querySelector<HTMLElement>('#sync-connect')?.hidden).toBe(false);
     expect(document.querySelector<HTMLElement>('#sync-connected')?.hidden).toBe(true);
     expect(text('#sync-secret-label')).toBe('GitHub personal access token');
@@ -230,7 +215,6 @@ describe('the options page', () => {
     expect(report).toContain('a Savely backup');
     expect(report).toContain('Added 1 new items, merged 0 existing ones.');
     expect(report).toContain('Nothing was skipped.');
-    // The item counter refreshes immediately.
     expect(document.querySelector('.stat__value')?.textContent).toBe('3');
   });
 

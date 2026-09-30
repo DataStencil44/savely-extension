@@ -1,12 +1,3 @@
-/**
- * The reader: `index.html?id=<itemId>`, opened in a new tab from the list.
- *
- * Everything happens locally. The only outbound traffic is images from the
- * original, and a single toggle turns it off ("don't load remote images").
- * Content enters the DOM only as a fragment that went through DOMPurify - no
- * `innerHTML`, no inline scripts, the CSP stays at its default
- * (CLAUDE.md 3, 5.6).
- */
 import browser from 'webextension-polyfill';
 
 import { onDataChanged } from '@/lib/changes';
@@ -37,7 +28,6 @@ import { required } from '@/ui/shared/dom';
 import { showToast } from '@/ui/shared/toast';
 
 
-/** Past this fraction of the content we consider the article read. */
 const READ_THRESHOLD = 0.9;
 const PROGRESS_SAVE_MS = 1_200;
 const SCROLL_STEP = 120;
@@ -68,14 +58,7 @@ const annotations = new Annotations({
   notify: toast,
 });
 
-// ---------------------------------------------------------------------------
-// Small UI helpers
-// ---------------------------------------------------------------------------
 
-/**
- * Shorter than the list's five seconds: a toast here only ever confirms
- * something that already happened, and there is nothing to take back.
- */
 const TOAST_MS = 2_500;
 
 function toast(message: string): void {
@@ -89,9 +72,6 @@ function message(text: string): void {
   el.article.replaceChildren(paragraph);
 }
 
-// ---------------------------------------------------------------------------
-// Settings
-// ---------------------------------------------------------------------------
 
 function applySettings(next: ReaderSettings): void {
   settings = next;
@@ -116,10 +96,6 @@ function applySettings(next: ReaderSettings): void {
   applyImagePolicy();
 }
 
-/**
- * Privacy: with images turned off we strip `src` but remember it in `data-src`,
- * so turning them back on does not require reloading the page.
- */
 function applyImagePolicy(): void {
   for (const image of el.article.querySelectorAll('img')) {
     const current = image.getAttribute('src');
@@ -184,13 +160,9 @@ function wireSettings(): void {
     void patchSettings({ remoteImages: !el.remoteImages.checked });
   });
 
-  // A change made in another tab should land here without a reload.
   onSettingsChanged(applySettings);
 }
 
-// ---------------------------------------------------------------------------
-// Reading progress
-// ---------------------------------------------------------------------------
 
 function scrollRatio(): number {
   const root = document.documentElement;
@@ -231,9 +203,6 @@ function restoreScroll(): void {
   root.scrollTop = item.readingProgress * scrollable;
 }
 
-// ---------------------------------------------------------------------------
-// Item actions and keyboard
-// ---------------------------------------------------------------------------
 
 function renderItemState(): void {
   if (item === null) return;
@@ -257,18 +226,9 @@ async function toggleArchive(): Promise<void> {
   toast(item.archived ? 'Archived.' : 'Restored from the archive.');
 }
 
-/**
- * The same article, changed somewhere else - archived from the list, or pulled
- * in by a sync. The item and its highlights are re-read; the article itself is
- * not: it is the one being read, and re-rendering it would take the reader's
- * place on the page with it. What this fixes is the header lying, and the
- * marks on the page pointing at highlights a sync has removed or added.
- */
 async function refreshItemState(): Promise<void> {
   if (item === null) return;
   const current = await getItem(item.id);
-  // Deleted elsewhere: what is on screen still reads fine, and saying so in a
-  // toast the reader did not ask for would help nobody.
   if (current === undefined) return;
   item = current;
   renderItemState();
@@ -326,9 +286,6 @@ function onKeyDown(event: KeyboardEvent): void {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Startup
-// ---------------------------------------------------------------------------
 
 function renderHeader(loaded: SavedItem): HTMLElement {
   const header = document.createElement('header');
@@ -367,7 +324,6 @@ async function main(): Promise<void> {
   });
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('selectionchange', () => {
-    // A short delay: `selectionchange` also fires while dragging the mouse.
     setTimeout(() => {
       annotations.onSelectionChange();
     }, 150);
@@ -430,8 +386,6 @@ async function main(): Promise<void> {
   await annotations.load(loaded.id);
 
   restoreScroll();
-  // Images load later and change the page height - once they are in, we jump
-  // back to the remembered position one more time.
   window.addEventListener('load', restoreScroll, { once: true });
   onScroll();
 }

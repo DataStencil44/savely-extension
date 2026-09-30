@@ -1,11 +1,3 @@
-/**
- * Tests for the data interchange formats. No database and no browser - the
- * `backup.ts` module is pure, and it is what decides what reaches the write at
- * all.
- *
- * The emphasis is on damaged files: an import should report, not explode and
- * not quietly let junk into the database.
- */
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -22,7 +14,7 @@ import {
   serializeBackup,
   summarizeProblems,
 } from './backup';
-import type { SavedItem } from './db';
+import type { SavedItem } from '@/types/item';
 
 const NOW = Date.UTC(2026, 2, 15, 12, 0, 0);
 
@@ -190,7 +182,6 @@ describe('JSON import: individual damaged records', () => {
 
     expect(broken?.savedAt).toBe(NOW);
     expect(broken?.tags).toEqual(['x']);
-    // Progress out of range would break the reader's bar.
     expect(broken?.readingProgress).toBe(1);
     expect(broken?.status).toBe('pending');
   });
@@ -229,7 +220,6 @@ describe('Pocket CSV import', () => {
       savedAt: 1_700_000_000_000,
       tags: ['rust', 'web'],
       archived: false,
-      // Pocket returns no content - only saving the page will fetch it.
       status: 'pending',
     });
     expect(plan.dump.items[1]).toMatchObject({ archived: true, archivedKey: 1 });

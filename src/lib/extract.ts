@@ -1,10 +1,3 @@
-/**
- * Extracting an article from a document.
- *
- * This module runs anywhere there is a DOM: in the content script (path A), in
- * the offscreen document on Chromium and on Firefox's background page (path B).
- * It touches no browser API - it takes a `Document` and returns a result.
- */
 import { Readability } from '@mozilla/readability';
 
 import { findFaviconUrls } from './favicon';
@@ -13,14 +6,6 @@ import { estimateReadingMinutes, type ExtractOutcome } from '@/types/article';
 
 const HTML_CONTENT_TYPES = ['text/html', 'application/xhtml+xml'];
 
-/**
- * Below this many characters we treat the content as absent.
- *
- * On an SPA shell Readability can return the navigation bar alone and present
- * it as the article. Better then to store an entry with `og:description` than
- * to pretend we have content. The cost: a very short note also ends up as an
- * entry without content.
- */
 const MIN_ARTICLE_CHARS = 140;
 
 function metaContent(doc: Document, selectors: readonly string[]): string | null {
@@ -57,12 +42,6 @@ function readLang(doc: Document): string | null {
   return lang === undefined || lang === '' ? null : lang;
 }
 
-/**
- * Extracts the content from a ready document.
- *
- * Readability rearranges and removes nodes, so it always gets a **clone** -
- * otherwise path A would wreck the page the user has open.
- */
 export function extractFromDocument(doc: Document, resolvedUrl: string): ExtractOutcome {
   const contentType = doc.contentType.toLowerCase();
   if (!HTML_CONTENT_TYPES.includes(contentType)) {
@@ -90,9 +69,6 @@ export function extractFromDocument(doc: Document, resolvedUrl: string): Extract
     siteName: readSiteName(doc),
     lang: readLang(doc),
     resolvedUrl,
-    // The addresses only - reading the DOM must stay synchronous and free of
-    // network access; whoever can reach the site fetches the bytes, trying
-    // them in turn.
     faviconUrls: findFaviconUrls(doc, resolvedUrl),
   };
 
@@ -100,8 +76,6 @@ export function extractFromDocument(doc: Document, resolvedUrl: string): Extract
   try {
     parsed = new Readability(doc.cloneNode(true) as Document).parse();
   } catch {
-    // Readability can blow up on an exotic DOM. That is no reason to lose the
-    // save - we fall back to an entry without content.
     parsed = null;
   }
 
@@ -142,12 +116,6 @@ export function extractFromDocument(doc: Document, resolvedUrl: string): Extract
   };
 }
 
-/**
- * The variant for path B: HTML pulled in with `fetch`, with no live tab.
- * The `<base>` element has to reach the document before Readability starts
- * resolving addresses - a DOMParser document inherits its baseURI from the
- * extension page.
- */
 export function extractFromHtml(html: string, resolvedUrl: string): ExtractOutcome {
   const doc = new DOMParser().parseFromString(html, 'text/html');
 

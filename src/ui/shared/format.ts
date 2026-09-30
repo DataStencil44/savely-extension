@@ -1,14 +1,6 @@
-/**
- * How a saved item is put into words - the domain, the date, the reading time,
- * the state. Shared, because the list card and the reader's header describe
- * the same item and must not describe it differently.
- *
- * Pure functions: testable without a browser.
- */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Hostname without `www.`; an unparseable address is returned as-is. */
 export function formatDomain(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
@@ -17,11 +9,6 @@ export function formatDomain(url: string): string {
   }
 }
 
-/**
- * The save date in human terms. Freshness is counted in calendar days, not in
- * 24-hour spans - an article saved yesterday at 23:00 should read "yesterday",
- * not "today".
- */
 export function formatSavedAt(savedAt: number, now = Date.now()): string {
   const start = (ms: number): number => new Date(ms).setHours(0, 0, 0, 0);
   const days = Math.round((start(now) - start(savedAt)) / DAY_MS);
@@ -43,7 +30,6 @@ export function formatReadingTime(minutes: number): string {
   return `${String(minutes)} min`;
 }
 
-/** A short description of the item state when it is not "ready to read". */
 export function formatStatus(status: 'pending' | 'ready' | 'failed'): string {
   switch (status) {
     case 'failed':

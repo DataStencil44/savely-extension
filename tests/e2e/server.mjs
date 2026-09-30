@@ -1,11 +1,3 @@
-/**
- * The fixture server for the e2e tests.
- *
- * Saving goes down path A (a content script in the tab), and that needs a real
- * http address - `file://` in Chrome is out of the extension's reach without a
- * separate permission. Hence a dozen lines of static server instead of a
- * dependency.
- */
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -22,7 +14,6 @@ const TYPES = {
 };
 
 const server = createServer((request, response) => {
-  // No `..` - the server sees the fixtures directory and nothing else.
   const path = normalize(new URL(request.url ?? '/', 'http://localhost').pathname).replace(
     /^(\.\.[/\\])+/,
     '',

@@ -1,10 +1,3 @@
-/*
- * The options page. The palette comes from the shared `../theme.css`, the same
- * one the list uses - one look across the whole extension, with no CSS
- * framework (CLAUDE.md 2). It has to stay readable at
- * 360 px, because on
- * Firefoksie na Androidzie to jedyne miejsce z eksportem i importem.
- */
 @import '../shared/theme.css';
 @import '../shared/toast.css';
 
@@ -46,7 +39,6 @@ body {
   gap: 16px;
 }
 
-/* --- section cards --- */
 
 .card {
   padding: 16px;
@@ -92,7 +84,6 @@ code {
   margin-top: 12px;
 }
 
-/* --- liczniki --- */
 
 .stats {
   display: grid;
@@ -121,7 +112,6 @@ code {
   font-size: 12px;
 }
 
-/* --- przyciski --- */
 
 .button {
   padding: 7px 12px;
@@ -170,7 +160,6 @@ code {
   gap: 6px;
 }
 
-/* --- import --- */
 
 .file {
   display: inline-flex;
@@ -216,7 +205,6 @@ code {
   margin-bottom: 2px;
 }
 
-/* --- synchronizacja --- */
 
 .field {
   display: flex;
@@ -246,10 +234,6 @@ code {
   outline-offset: 1px;
 }
 
-/*
- * The warning about where the data lands must be visible before anyone pastes
- * a token - hence a framed box rather than small grey print.
- */
 .warn {
   margin: 0 0 12px;
   padding: 10px 12px;
@@ -276,7 +260,6 @@ code {
   gap: 8px;
 }
 
-/* --- kopie --- */
 
 .snapshots {
   margin: 0 0 12px;
@@ -311,7 +294,6 @@ code {
   font-size: 12px;
 }
 
-/* --- dialog --- */
 
 .dialog {
   max-width: 420px;

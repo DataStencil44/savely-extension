@@ -1,17 +1,6 @@
-/**
- * The "GitHub Gist" provider: one private Gist as a mailbox for the data.
- *
- * Why a personal token rather than the OAuth Device Flow: Device Flow needs an
- * application `client_id`, which means an account somebody has to maintain, and
- * a code-for-token exchange on GitHub's side - and it implies that there is a
- * "Savely service" on the other end. There is not. A token the user generates
- * themselves and can revoke themselves is more honest: it is plain to see whose
- * account it is, what it may do and who can reach the data.
- *
- * The token lives only in `storage.local` - never in `storage.sync`, because
- * that travels to the browser's servers and to every signed-in device.
- */
 import browser from 'webextension-polyfill';
+
+import { isRecord } from '../unknown';
 
 import {
   CONTENTS_FILE,
@@ -29,7 +18,6 @@ const API = 'https://api.github.com';
 const ORIGIN = 'https://api.github.com/*';
 const DESCRIPTION = 'Savely - sync (private gist, extension data)';
 
-/** A Gist gets truncated on larger files; above ~10 MB the API starts refusing. */
 const MAX_FILE_BYTES = 9 * 1024 * 1024;
 
 interface Credentials {
@@ -50,10 +38,6 @@ interface GistResponse {
   updated_at?: string;
   files?: Record<string, GistFile | null>;
   history?: { version?: string }[];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 async function readCredentials(): Promise<Credentials | null> {
@@ -81,7 +65,6 @@ function headers(token: string): Record<string, string> {
   };
 }
 
-/** Turns a GitHub response into a message someone can act on. */
 async function fail(response: Response): Promise<never> {
   if (response.status === 401) {
     throw new SyncAccessError('GitHub rejected the token. Generate a new one and connect again.');
@@ -137,8 +120,6 @@ export class GitHubGistProvider implements SyncProvider {
     const token = (secret ?? '').trim();
     if (token === '') throw new SyncAccessError('Paste a token, otherwise there is no way to connect.');
 
-    // The FIRST `await` in the click handler - in Firefox the permission
-    // request has to come straight from a user gesture (CLAUDE.md 5.3).
     const granted = await browser.permissions.request({ origins: [ORIGIN] });
     if (!granted) {
       throw new SyncAccessError('Without permission for api.github.com there is no way to sync.');
@@ -167,8 +148,6 @@ export class GitHubGistProvider implements SyncProvider {
     try {
       gist = await call(credentials.token, `/gists/${credentials.gistId}`);
     } catch (error) {
-      // A gist deleted by hand: we forget about it and start over rather than
-      // blocking sync forever.
       if (error instanceof SyncAccessError && error.message.includes('is gone')) {
         await writeCredentials({ ...credentials, gistId: null });
         return { files: null, revision: null };
@@ -205,9 +184,6 @@ export class GitHubGistProvider implements SyncProvider {
       return revisionOf(created);
     }
 
-    // Gists have no `If-Match`, so we check the revision right before writing.
-    // A race window remains, but the ordinary case - another device syncing in
-    // the meantime - is caught and reported plainly.
     if (expectedRevision !== null) {
       const current = await call(credentials.token, `/gists/${credentials.gistId}`);
       if (revisionOf(current) !== expectedRevision) {
@@ -225,7 +201,6 @@ export class GitHubGistProvider implements SyncProvider {
   }
 
   async disconnect(): Promise<void> {
-    // The gist itself stays - we only remove this device's access to it.
     await browser.storage.local.remove(STORAGE_KEY);
   }
 
@@ -241,11 +216,6 @@ export class GitHubGistProvider implements SyncProvider {
     return credentials;
   }
 
-  /**
-   * Looks for a Savely gist on the account instead of creating a new one right
-   * away: a second device should attach to the same data, not open a second
-   * mailbox.
-   */
   async #findGist(token: string): Promise<string | null> {
     const response = await fetch(`${API}/gists?per_page=100`, { headers: headers(token) });
     if (!response.ok) await fail(response);

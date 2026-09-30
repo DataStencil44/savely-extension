@@ -1,48 +1,17 @@
-/**
- * Data interchange formats: what goes out to a file and what may come back in.
- *
- * With no backend a file is the only way out of this extension, so the format
- * has to be readable (JSON with an explicit schema version) and lossy only
- * where we deliberately want it to be (Netscape bookmarks are just the address,
- * title and tags).
- *
- * The whole module is pure: no IndexedDB, no `browser.*`, no DOM. The input is
- * a string from a file, the output is validated records or a report of
- * problems - writing to the database is left to `importDump` in
- * `src/lib/db/transfer.ts`, in a single transaction.
- *
- * An imported file is treated as external data (CLAUDE.md 3): it arrives as
- * `unknown`, every field is checked, and whatever we do not understand lands in
- * the report instead of the database.
- */
 import { estimateReadingMinutes } from '@/types/article';
 
 import { normalizeTags, normalizeUrl } from './url';
-import {
-  type DatabaseDump,
-  type Highlight,
-  type ItemContent,
-  type ItemStatus,
-  type SavedItem,
-} from './db';
-
-// ---------------------------------------------------------------------------
-// The file format
-// ---------------------------------------------------------------------------
+import { isRecord } from './unknown';
+import type { DatabaseDump } from './db';
+import type { Highlight, ItemContent, ItemStatus, SavedItem } from '@/types/item';
 
 export const BACKUP_FORMAT = 'savely-backup';
 
-/**
- * The version of the **file format**, independent of the database schema
- * version. The schema can grow without changing the file layout; only a layout
- * change bumps this number.
- */
 export const BACKUP_FORMAT_VERSION = 1;
 
 export interface BackupFile extends DatabaseDump {
   format: typeof BACKUP_FORMAT;
   formatVersion: number;
-  /** The IndexedDB schema version the dump was taken from - for diagnostics. */
   schemaVersion: number;
   exportedAt: number;
   counts: { items: number; contents: number; highlights: number };
@@ -67,10 +36,6 @@ export function buildBackup(
   };
 }
 
-/**
- * No indentation: a backup with article content can run to tens of megabytes,
- * and pretty-printing adds a third on top. A program reads the file anyway.
- */
 export function serializeBackup(file: BackupFile): string {
   return JSON.stringify(file);
 }
@@ -89,10 +54,6 @@ export function bookmarksFileName(when: number): string {
   return `savely-bookmarks-${isoDay(when)}.html`;
 }
 
-// ---------------------------------------------------------------------------
-// Export to Netscape bookmarks
-// ---------------------------------------------------------------------------
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -110,14 +71,6 @@ function fallbackTitle(item: SavedItem): string {
   }
 }
 
-/**
- * The Netscape bookmarks format - the same one Chrome, Firefox and Safari read.
- * The requirements are prehistoric and literal: the doctype on the first line,
- * one `<DL><p>` and a `<DT><A HREF=...>` per entry. `ADD_DATE` is in seconds.
- *
- * We write the original address, not the normalized one - the browser should
- * open exactly what the user saved.
- */
 export function buildBookmarksHtml(items: readonly SavedItem[], exportedAt: number): string {
   const lines = [
     '<!DOCTYPE NETSCAPE-Bookmark-file-1>',
@@ -142,35 +95,25 @@ export function buildBookmarksHtml(items: readonly SavedItem[], exportedAt: numb
   return lines.join('\n');
 }
 
-// ---------------------------------------------------------------------------
-// Import: shared types
-// ---------------------------------------------------------------------------
-
-/** The file is unusable - there is no point reporting it item by item. */
 export class ImportError extends Error {
   override readonly name = 'ImportError';
 }
 
 export interface ImportProblem {
-  /** Where in the file, in human terms: `item 12`, `row 34`. */
   where: string;
   reason: string;
 }
 
 export interface ImportPlan {
   source: 'json' | 'pocket-csv';
-  /** Records ready for `importDump` - already validated and normalized. */
   dump: DatabaseDump;
   problems: ImportProblem[];
-  /** How many records the file held in total (including the skipped ones). */
   total: number;
 }
 
-/** Reasons repeat hundreds of times - they go into the report grouped. */
 export interface ProblemGroup {
   reason: string;
   count: number;
-  /** The first few locations, so it can be found in the file. */
   examples: string[];
 }
 
@@ -185,10 +128,6 @@ export function summarizeProblems(problems: readonly ImportProblem[]): ProblemGr
   }
 
   return [...groups.values()].sort((a, b) => b.count - a.count);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function asString(value: unknown, fallback: string): string {
@@ -218,15 +157,10 @@ function asStatus(value: unknown): ItemStatus {
   return typeof value === 'string' && STATUSES.includes(value) ? (value as ItemStatus) : 'pending';
 }
 
-/** Reading progress is a fraction - junk from a file must not break the reader's bar. */
 function asProgress(value: unknown): number {
   const raw = asNumber(value, 0);
   return Math.min(1, Math.max(0, raw));
 }
-
-// ---------------------------------------------------------------------------
-// Import: our own JSON
-// ---------------------------------------------------------------------------
 
 function readItem(raw: unknown, now: number): SavedItem | string {
   if (!isRecord(raw)) return 'the item is not an object';
@@ -256,8 +190,6 @@ function readItem(raw: unknown, now: number): SavedItem | string {
       asNumber(raw['estReadingMinutes'], estimateReadingMinutes(wordCount)),
     ),
     savedAt: savedAt > 0 ? savedAt : now,
-    // Older backups have no `updatedAt` - the save date is then the closest
-    // approximation of the last change.
     updatedAt: asNumber(raw['updatedAt'], savedAt > 0 ? savedAt : now),
     readAt: typeof readAt === 'number' && Number.isFinite(readAt) ? readAt : null,
     archived,
@@ -315,12 +247,6 @@ function asArray(value: unknown, field: string): unknown[] {
   return value;
 }
 
-/**
- * Reads a Savely backup. It throws only when the file as a whole is
- * unacceptable (not JSON, not our format, a newer format version). A single
- * broken record goes to `problems` while the rest of the import proceeds
- * normally.
- */
 export function parseBackup(text: string, now = Date.now()): ImportPlan {
   let parsed: unknown;
   try {
@@ -347,7 +273,6 @@ export function parseBackup(text: string, now = Date.now()): ImportPlan {
 
   const problems: ImportProblem[] = [];
   const items: SavedItem[] = [];
-  /** id from the file -> normalized address; it doubles as the list of accepted items. */
   const accepted = new Map<string, string>();
   const seenUrls = new Map<string, number>();
 
@@ -359,9 +284,6 @@ export function parseBackup(text: string, now = Date.now()): ImportPlan {
       return;
     }
 
-    // Two entries with the same address in one file: we take the first,
-    // because the database would merge them into one record anyway - better to
-    // say so plainly.
     const first = seenUrls.get(item.url);
     if (first !== undefined) {
       problems.push({
@@ -404,17 +326,7 @@ export function parseBackup(text: string, now = Date.now()): ImportPlan {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Import: Pocket CSV
-// ---------------------------------------------------------------------------
-
-/**
- * CSV per RFC 4180: a comma separates, a double quote quotes, `""` inside is
- * one double quote. A hand-written parser, because article titles routinely
- * contain commas and quotes, and `split(',')` would lose whole rows on them.
- */
 export function parseCsv(text: string): string[][] {
-  // A BOM at the start of the file would end up in the first header column name.
   const input = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
   const rows: string[][] = [];
   let row: string[] = [];
@@ -464,16 +376,10 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
-/** Pocket separates tags with a pipe; older exports sometimes use a comma. */
 function pocketTags(value: string): string[] {
   return normalizeTags(value.split(/[|,]/));
 }
 
-/**
- * A Pocket export: `title,url,time_added,tags,status`. Columns are taken by
- * name from the header, not by position - the order changed between export
- * versions, but the header was there in every one.
- */
 export function parsePocketCsv(text: string, now = Date.now()): ImportPlan {
   const rows = parseCsv(text);
   const header = rows[0];
@@ -502,10 +408,8 @@ export function parsePocketCsv(text: string, now = Date.now()): ImportPlan {
   const seenUrls = new Map<string, number>();
 
   rows.slice(1).forEach((row, index) => {
-    // Row numbers as in a spreadsheet: the header is 1, the first data row 2.
     const where = `row ${String(index + 2)}`;
 
-    // A last line without a terminator yields an empty row - that is not an error.
     if (row.length === 1 && (row[0] ?? '') === '') return;
 
     const url = cell(row, urlColumn);
@@ -547,7 +451,6 @@ export function parsePocketCsv(text: string, now = Date.now()): ImportPlan {
       favorite: false,
       tags: pocketTags(cell(row, tagsColumn)),
       contentHash: null,
-      // Pocket gives addresses only - the content has to be fetched by saving the page.
       status: 'pending',
       readingProgress: 0,
       archivedKey: archived ? 1 : 0,
@@ -562,11 +465,6 @@ export function parsePocketCsv(text: string, now = Date.now()): ImportPlan {
   };
 }
 
-/**
- * Picks a parser by file extension, and when the name says nothing - by
- * content. A file with the wrong extension happens more often than a corrupt
- * one.
- */
 export function parseImportFile(fileName: string, text: string, now = Date.now()): ImportPlan {
   const name = fileName.toLowerCase();
   if (name.endsWith('.csv')) return parsePocketCsv(text, now);

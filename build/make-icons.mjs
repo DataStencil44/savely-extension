@@ -1,13 +1,3 @@
-/**
- * The extension icon generator -> src/public/icons/icon-{16,32,48,128}.png
- *
- * The icons are not required merely for looks: `notifications.create` in Chrome
- * refuses without an `iconUrl`, so without the file there would be no error
- * messages at all.
- *
- * The script is a one-off (its output is in the repo) - run it only when the
- * shape or the color changes: `node build/make-icons.mjs`.
- */
 import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -16,24 +6,17 @@ import { fileURLToPath } from 'node:url';
 const OUT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'public', 'icons');
 const SIZES = [16, 32, 48, 128];
 
-// The mark, in a 512-unit square (same geometry as the SVG logo):
-// a dark tile, a blue triangle on the upper left and a violet one on the right,
-// leaving a V-shaped notch at the bottom.
 const BACKGROUND = [43, 42, 41];
 const BLUE = [44, 94, 215];
 const VIOLET = [66, 67, 162];
 
-/** Which color the point (x, y) in 512-unit space falls on. */
 function colorAt(x, y) {
   if (x < 85 || x > 425 || y < 55 || y > 440) return BACKGROUND;
-  // The diagonal from the top right (425, 55) to the bottom left (85, 440).
   const side = (x - 425) * (440 - 55) - (y - 55) * (85 - 425);
   if (side < 0) return BLUE;
-  // Right of the diagonal: violet above the line from the notch apex (255, 247.5) to (425, 440).
   return (y - 247.5) * (425 - 255) <= (x - 255) * (440 - 247.5) ? VIOLET : BACKGROUND;
 }
 
-/** 4x4 supersampling per pixel - cheap antialiasing. */
 function renderRgba(size) {
   const steps = 4;
   const scale = 512 / size;
@@ -86,11 +69,9 @@ function encodePng(size, pixels) {
   const header = Buffer.alloc(13);
   header.writeUInt32BE(size, 0);
   header.writeUInt32BE(size, 4);
-  header[8] = 8; // bit depth
-  header[9] = 6; // truecolor + alpha
-  // 10-12: compression, filter, interlace = 0
+  header[8] = 8;
+  header[9] = 6;
 
-  // Every row is prefixed with a filter byte (0 = none).
   const raw = Buffer.alloc(size * (size * 4 + 1));
   for (let y = 0; y < size; y += 1) {
     const from = y * size * 4;

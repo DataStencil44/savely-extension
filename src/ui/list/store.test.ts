@@ -1,12 +1,6 @@
-/**
- * The rules of the list, checked without a document: which tab holds what, how
- * the filters combine, where the selection lands, and - the part that used to
- * be untestable - whether the search index still agrees with the items after
- * they have been changed, deleted and put back.
- */
 import { describe, expect, it } from 'vitest';
 
-import type { SavedItem } from '@/lib/db';
+import type { SavedItem } from '@/types/item';
 
 import { ListStore } from './store';
 
@@ -18,8 +12,8 @@ interface ItemOverrides {
   tags?: string[];
   archived?: boolean;
   favorite?: boolean;
-  /** Days before "now" - lower is newer, which is the order the list keeps. */
   age?: number;
+  contentHash?: string | null;
 }
 
 function item(overrides: ItemOverrides = {}): SavedItem {
@@ -43,7 +37,7 @@ function item(overrides: ItemOverrides = {}): SavedItem {
     archived: overrides.archived ?? false,
     favorite: overrides.favorite ?? false,
     tags: overrides.tags ?? [],
-    contentHash: null,
+    contentHash: overrides.contentHash ?? null,
     status: 'ready',
     readingProgress: 0,
     archivedKey: overrides.archived === true ? 1 : 0,
@@ -54,7 +48,6 @@ function ids(store: ListStore): string[] {
   return store.view.visible.map((entry) => entry.id);
 }
 
-/** The three tabs, in one library: two in the inbox, one archived, one favorite. */
 function seeded(options?: ConstructorParameters<typeof ListStore>[0]): ListStore {
   const store = new ListStore(options);
   store.setItems([
@@ -119,8 +112,6 @@ describe('the search', () => {
     store.applyQuery('rust');
     expect(ids(store)).toEqual(['c']);
 
-    // The archived item matches the same word just as well - and is in the
-    // other tab, which is the only reason it was not in the answer above.
     store.setTab('archive');
     expect(ids(store)).toEqual(['d']);
   });
@@ -263,5 +254,50 @@ describe('subscribers', () => {
     store.select(1);
     store.setTab('archive');
     expect(views).toEqual([1, -1]);
+  });
+});
+
+describe('a fresh read of the database', () => {
+  it('keeps the content already indexed, so a save elsewhere does not blind the search', () => {
+    const store = seeded();
+    store.setContentText('a', 'the tram network carries a million passengers');
+
+    store.setItems([item({ id: 'new', title: 'Something else', age: -1 }), ...store.items]);
+
+    store.applyQuery('passengers');
+    expect(ids(store)).toEqual(['a']);
+  });
+
+  it('answers with the items whose content the index still needs', () => {
+    const store = new ListStore();
+    expect(store.setItems([item({ id: 'a', contentHash: 'h1' }), item({ id: 'b', age: 1 })])).toEqual([
+      'a',
+      'b',
+    ]);
+
+    const stale = store.setItems([
+      item({ id: 'a', contentHash: 'h2' }),
+      item({ id: 'b', age: 1 }),
+      item({ id: 'c', age: 2 }),
+    ]);
+    expect(stale).toEqual(['a', 'c']);
+  });
+
+  it('drops what the database no longer has from the search', () => {
+    const store = seeded();
+    store.setItems(store.items.filter((entry) => entry.id !== 'a'));
+
+    store.applyQuery('Vienna');
+    expect(ids(store)).toEqual([]);
+  });
+
+  it('re-indexes a title changed elsewhere', () => {
+    const store = seeded();
+    store.setItems(store.items.map((entry) => (entry.id === 'b' ? { ...entry, title: 'Bikes in Delft' } : entry)));
+
+    store.applyQuery('Delft');
+    expect(ids(store)).toEqual(['b']);
+    store.applyQuery('Utrecht');
+    expect(ids(store)).toEqual([]);
   });
 });

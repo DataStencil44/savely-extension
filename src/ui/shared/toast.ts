@@ -1,15 +1,3 @@
-/**
- * One toast at a time, with an optional action (the list's Undo).
- *
- * The host element is passed in rather than looked up, so the three pages can
- * each place their own `.toast` in their own markup and still get the same
- * behaviour and the same timing out of it.
- *
- * The toast counts down how long the action stays on offer, not how long until
- * anything happens - a deletion is already in the database by the time the
- * toast appears. `onExpire` fires whenever the toast goes without the action
- * being used, which is how the caller drops what it was holding for it.
- */
 
 export interface ToastAction {
   label: string;
@@ -35,7 +23,6 @@ function hide(host: HTMLElement): void {
   host.replaceChildren();
 }
 
-/** Closes the previous toast (firing its `onExpire`) and shows a new one. */
 export function showToast(host: HTMLElement, options: ToastOptions): void {
   flushToast(host);
 
@@ -68,7 +55,6 @@ export function showToast(host: HTMLElement, options: ToastOptions): void {
   }, options.durationMs ?? DEFAULT_MS);
 }
 
-/** Closes the toast immediately, as if the time had run out. */
 function flushToast(host: HTMLElement): void {
   const pending = expire;
   expire = undefined;

@@ -1,43 +1,18 @@
-/**
- * What the list is showing, and why - with no DOM in sight.
- *
- * The page used to keep this in module-level variables next to the rendering,
- * which made two things awkward. The items and the search index had to be kept
- * in step by hand at every call site - an item that changed had to be
- * re-indexed, a deleted one dropped from the index - which is four places that
- * could each forget. And nothing about the filtering could be tested without
- * building a document first, so the rules for what a tab holds, or what a
- * search does to the order, were only ever checked through the DOM they
- * happened to produce.
- *
- * So the store owns both collections and every change goes through it: the
- * index cannot fall behind the items, because the same method moves them.
- * Everything here is plain data - the page subscribes, and draws.
- */
-import type { SavedItem } from '@/lib/library';
+import type { SavedItem } from '@/types/item';
 import { SearchIndex } from '@/lib/search';
 
 export type TabId = 'inbox' | 'favorite' | 'archive';
 
-/**
- * How deep a search reaches. Far past a screen, well short of a corpus: the
- * ranking beyond a few hundred hits is not what anyone is scrolling for.
- */
 const SEARCH_LIMIT = 500;
 
 export interface ListView {
-  /** The items to draw, in order - already cut to `limit`. */
   visible: readonly SavedItem[];
-  /** How many items pass the filters, before that cut. */
   matched: number;
-  /** The tab badges. Counted over everything, so they hold still while you filter. */
   counts: Record<TabId, number>;
-  /** The index into `visible`, or -1 for nothing selected. */
   selected: number;
 }
 
 export interface ListStoreOptions {
-  /** The popup draws the top of the list only. Left out: all of it. */
   limit?: number;
 }
 
@@ -64,10 +39,6 @@ export class ListStore {
     this.#limit = options.limit ?? Number.POSITIVE_INFINITY;
   }
 
-  // -------------------------------------------------------------------------
-  // Reading
-  // -------------------------------------------------------------------------
-
   get view(): ListView {
     return this.#view;
   }
@@ -92,18 +63,12 @@ export class ListStore {
     return this.#view.visible[this.#selected];
   }
 
-  /** Every tag in use, for the tag editor's suggestions. */
   knownTags(): string[] {
     const all = new Set<string>();
     for (const item of this.#items) for (const tag of item.tags) all.add(tag);
     return [...all].sort();
   }
 
-  /**
-   * Why the list is empty - which is never just one reason. A filter that found
-   * nothing and a tab that holds nothing look identical on screen, and the
-   * difference is the whole of what the reader needs to know.
-   */
   emptyMessage(): string {
     if (this.#query.trim() !== '') return `No results for “${this.#query.trim()}”.`;
     if (this.#tags.length > 0) return 'No item has all of the selected tags.';
@@ -117,61 +82,55 @@ export class ListStore {
     }
   }
 
-  /** Called after every change, with the view to draw. */
   subscribe(listener: (view: ListView) => void): void {
     this.#listeners.add(listener);
   }
 
-  // -------------------------------------------------------------------------
-  // The items
-  // -------------------------------------------------------------------------
+  setItems(items: readonly SavedItem[]): string[] {
+    const previous = new Map(this.#items.map((item) => [item.id, item]));
+    const stale: string[] = [];
 
-  /** A fresh read of the database. The metadata index is rebuilt with it. */
-  setItems(items: readonly SavedItem[]): void {
+    for (const item of items) {
+      const before = previous.get(item.id);
+      previous.delete(item.id);
+
+      if (before?.contentHash !== item.contentHash) stale.push(item.id);
+      if (before?.title !== item.title || before.excerpt !== item.excerpt) {
+        this.#addToIndex(item);
+      }
+    }
+    for (const id of previous.keys()) this.#index.remove(id);
+
     this.#items = [...items];
-    this.#index.clear();
-    for (const item of this.#items) this.#addToIndex(item);
     this.#recompute();
+    return stale;
   }
 
-  /**
-   * An item's content, once it has been read - the full page only. It changes
-   * what a search can find, not what is on screen, so it draws nothing; when a
-   * search is already running, `refresh` re-runs it against the fuller index.
-   */
   setContentText(id: string, text: string): void {
     this.#index.setText(id, text);
   }
 
-  /** The view again, on unchanged filters - for when the index grew underneath it. */
   refresh(): void {
     this.#recompute();
   }
 
-  /** An item came back changed from the database: archived, tagged, favorited. */
   replace(updated: SavedItem): void {
     this.#items = this.#items.map((item) => (item.id === updated.id ? updated : item));
     this.#addToIndex(updated);
     this.#recompute();
   }
 
-  /** Off the screen. The database is the caller's business; the index is not. */
   remove(id: string): void {
     this.#items = this.#items.filter((item) => item.id !== id);
     this.#index.remove(id);
     this.#recompute();
   }
 
-  /** Back on screen, in its place by date - Undo, and nothing else. */
   restore(item: SavedItem): void {
     this.#items = [...this.#items, item].sort((a, b) => b.savedAt - a.savedAt);
     this.#addToIndex(item);
     this.#recompute();
   }
-
-  // -------------------------------------------------------------------------
-  // The filters
-  // -------------------------------------------------------------------------
 
   setTab(tab: TabId): void {
     this.#tab = tab;
@@ -179,11 +138,6 @@ export class ListStore {
     this.#recompute();
   }
 
-  /**
-   * What the search field means: the words to search for, plus any `tag:`
-   * tokens that have turned into filters (`parseQuery`). One call, because
-   * they arrive from one keystroke and would otherwise redraw the list twice.
-   */
   applyQuery(query: string, tags: readonly string[] = []): void {
     for (const tag of tags) if (!this.#tags.includes(tag)) this.#tags = [...this.#tags, tag];
     this.#query = query;
@@ -191,7 +145,6 @@ export class ListStore {
     this.#recompute();
   }
 
-  /** A tag clicked on a card. The selection stays where it is. */
   addTag(tag: string): void {
     if (this.#tags.includes(tag)) return;
     this.#tags = [...this.#tags, tag];
@@ -203,11 +156,6 @@ export class ListStore {
     this.#recompute();
   }
 
-  // -------------------------------------------------------------------------
-  // The selection
-  // -------------------------------------------------------------------------
-
-  /** Moves the selection, clamped to the list. Answers with where it landed. */
   select(position: number): number {
     if (this.#view.visible.length === 0) return this.#selected;
     this.#selected = Math.min(Math.max(position, 0), this.#view.visible.length - 1);
@@ -215,10 +163,6 @@ export class ListStore {
     this.#notify();
     return this.#selected;
   }
-
-  // -------------------------------------------------------------------------
-  // Deriving the view
-  // -------------------------------------------------------------------------
 
   #addToIndex(item: SavedItem): void {
     this.#index.addItem({ id: item.id, title: item.title, excerpt: item.excerpt });
@@ -244,8 +188,6 @@ export class ListStore {
 
     let matched = base;
     if (this.#query.trim() !== '') {
-      // The search is scoped to the tab in view - otherwise an archived hit
-      // would surface in the inbox, and the other way round.
       const ranking = new Map(
         this.#index.search(this.#query, SEARCH_LIMIT).map((id, position) => [id, position]),
       );

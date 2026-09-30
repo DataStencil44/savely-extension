@@ -52,7 +52,6 @@ describe('locate', () => {
       prefix: 'The first paragraph. ',
       suffix: ' about bicycles',
     };
-    // Somebody prepended an excerpt - the offsets no longer match.
     const prefix = 'An excerpt added later. ';
     const shifted = `${prefix}${text}`;
 
@@ -72,7 +71,6 @@ describe('locate', () => {
       suffix: ' four',
     };
 
-    // The first "cat" is closer to offset 0, but the context points at the second.
     expect(locate(doubled, anchor)).toEqual({ start: 19, end: 22 });
   });
 
@@ -113,7 +111,6 @@ describe('selecting in the DOM', () => {
     const marks = wrapRange(map, offsets, 'h1');
     expect(marks).toHaveLength(1);
     expect(root.querySelector('mark[data-highlight="h1"]')?.textContent).toBe('cat');
-    // The article text has not changed - the offsets of other highlights still hold.
     expect(buildTextMap(root).text).toBe('Amy has a cat and a dog.');
   });
 

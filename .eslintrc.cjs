@@ -1,11 +1,3 @@
-/**
- * ESLint (.eslintrc format) - the file has a .cjs extension because package.json
- * declares "type": "module", while ESLint 8 loads its config through require().
- */
-// Anything two pages need lives in `src/ui/shared/`. Without this rule the
-// shared module ends up in whichever page happened to need it first, and the
-// other pages import *that* - which is how `toast.ts` and `format.ts` came to
-// live in `ui/list/` and be imported by the options page and the reader.
 const NO_CROSS_PAGE_IMPORTS = {
   group: [
     '@/ui/list/*',
@@ -40,9 +32,7 @@ module.exports = {
   ],
   ignorePatterns: ['dist/', 'node_modules/', '*.cjs'],
   rules: {
-    // --- the project's hard rules ---
 
-    // no `any`
     '@typescript-eslint/no-explicit-any': 'error',
     '@typescript-eslint/no-unsafe-assignment': 'error',
     '@typescript-eslint/no-unsafe-member-access': 'error',
@@ -50,14 +40,12 @@ module.exports = {
     '@typescript-eslint/no-unsafe-argument': 'error',
     '@typescript-eslint/no-unsafe-return': 'error',
 
-    // ESM, consistent type imports
     '@typescript-eslint/consistent-type-imports': [
       'error',
       { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
     ],
     '@typescript-eslint/no-require-imports': 'error',
 
-    // Browser APIs exclusively through webextension-polyfill
     'no-restricted-globals': [
       'error',
       {
@@ -70,7 +58,6 @@ module.exports = {
     'no-restricted-syntax': [
       'error',
       {
-        // no innerHTML/outerHTML without DOMPurify
         selector:
           "AssignmentExpression[left.type='MemberExpression'][left.property.name=/^(innerHTML|outerHTML)$/]:not([right.callee.object.name='DOMPurify'])",
         message:
@@ -92,7 +79,6 @@ module.exports = {
       },
     ],
 
-    // --- hygiene ---
     eqeqeq: ['error', 'always'],
     'no-console': ['warn', { allow: ['warn', 'error'] }],
     'no-var': 'error',
@@ -113,9 +99,6 @@ module.exports = {
         'no-restricted-imports': [
           'error',
           {
-            // A page reaches the database through `@/lib/library`, whose writes
-            // tell the other open pages about themselves (CLAUDE.md 4.12). A
-            // write taken straight from `@/lib/db` leaves them showing old data.
             paths: [
               {
                 name: '@/lib/db',
@@ -128,14 +111,12 @@ module.exports = {
       },
     },
     {
-      // Tests set the database up directly; nothing is on screen to announce to.
       files: ['src/ui/**/*.test.ts'],
       rules: {
         'no-restricted-imports': ['error', { patterns: [NO_CROSS_PAGE_IMPORTS] }],
       },
     },
     {
-      // the background runs in a service worker (Chrome) / event page (Firefox) - no DOM
       files: ['src/background/**/*.ts'],
       env: { browser: false, worker: true, webextensions: true },
       rules: {
@@ -159,10 +140,6 @@ module.exports = {
       rules: { 'no-console': 'off' },
     },
     {
-      // The e2e tests drive real Chromium. Code inside `page.evaluate` runs in
-      // the context of the extension page, where the polyfill is absent and
-      // `chrome.*` is the only API - hence the exception to the CLAUDE.md 5.4
-      // rule.
       files: ['tests/e2e/**/*.ts'],
       env: { node: true, browser: true },
       rules: {

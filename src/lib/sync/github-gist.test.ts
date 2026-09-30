@@ -1,16 +1,7 @@
-/**
- * GitHub Gist provider tests with a stubbed `fetch`.
- *
- * We check the three things that matter most: the token never leaves
- * `storage.local`, the host permission request goes out before any request at
- * all, and a race between two devices ends in a readable error rather than
- * silently overwriting someone else's data.
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const storage = vi.hoisted(() => {
   const local: Record<string, unknown> = {};
-  /** Writes to `storage.sync` - it must stay empty for the whole test. */
   const sync: Record<string, unknown> = {};
   let granted = true;
 
@@ -78,7 +69,6 @@ interface Call {
 
 const calls: Call[] = [];
 
-/** The response queue: every `fetch` call takes the first one off the front. */
 let responses: { status?: number; body: unknown; text?: string }[] = [];
 
 function mockFetch(): void {

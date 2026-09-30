@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-/** The polyfill checks `chrome.runtime.id` as soon as the module loads. */
 const store = vi.hoisted(() => {
   const data: Record<string, unknown> = {};
   Object.defineProperty(globalThis, 'chrome', {

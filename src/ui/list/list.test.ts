@@ -1,13 +1,4 @@
 // @vitest-environment jsdom
-/**
- * A list-view test on jsdom: we mount the real `list.html`, run `list.ts` and
- * click the way a user would.
- *
- * What we check above all is what the unit tests cannot see: that the
- * virtualization keeps a dozen or so cards in the DOM regardless of list
- * length, and that the popup and the full page differ in exactly the ways they
- * should.
- */
 import 'fake-indexeddb/auto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -16,14 +7,11 @@ import { deleteDb, deleteItem, getItem, putFavicon, saveItem, setContent } from 
 
 const ITEMS = 300;
 
-/** Stored for one of the seven domains, so the cards of the others stay bare. */
 const ICON = 'data:image/png;base64,AAAA';
 const ICON_DOMAIN = 'site-5.example';
 
-/** The addresses passed to `tabs.create` - this is how we know what opened in a new tab. */
 const openedTabs: string[] = [];
 
-/** What the theme switcher writes; `storage.sync` in the browser. */
 const settingsStore: Record<string, unknown> = {};
 
 type StorageListener = (
@@ -31,10 +19,8 @@ type StorageListener = (
   areaName: string,
 ) => void;
 
-/** The `storage.onChanged` listeners the page registered - how another context reaches it. */
 const storageListeners: StorageListener[] = [];
 
-/** A save, a sync or an import in some other context, as the browser reports it. */
 function announceFromElsewhere(): void {
   for (const listener of storageListeners) {
     listener(
@@ -44,11 +30,6 @@ function announceFromElsewhere(): void {
   }
 }
 
-/**
- * The page markup without `<script>` - we load the module ourselves, once the
- * DOM is ready. It is assembled with DOMParser rather than `innerHTML`: the same
- * rule holds in the tests as in the code (CLAUDE.md 3).
- */
 function mount(search: string): void {
   window.history.replaceState({}, '', `/ui/list/list.html${search}`);
 
@@ -67,14 +48,12 @@ function cards(): NodeListOf<HTMLLIElement> {
   return document.querySelectorAll<HTMLLIElement>('.card');
 }
 
-/** A button in the toolbar that acts on the selected card. */
 function toolbar(action: 'read' | 'favorite' | 'archive' | 'tags' | 'delete'): HTMLButtonElement {
   const found = document.querySelector<HTMLButtonElement>(`#item-${action}`);
   if (found === null) throw new Error(`no ${action} button`);
   return found;
 }
 
-/** A click on the first card on screen - the way the toolbar gets something to act on. */
 async function selectFirstCard(): Promise<void> {
   document.querySelector('.card:first-child .card__title')?.dispatchEvent(
     new MouseEvent('click', { bubbles: true }),
@@ -85,7 +64,6 @@ async function selectFirstCard(): Promise<void> {
 beforeAll(async () => {
   await deleteDb();
 
-  // webextension-polyfill checks `chrome.runtime.id` when the module loads.
   const noop = (): void => undefined;
   Object.defineProperty(globalThis, 'chrome', {
     configurable: true,
@@ -121,7 +99,6 @@ beforeAll(async () => {
           get: (_keys: unknown, callback: (items: unknown) => void) => {
             callback({});
           },
-          // Where `announceChange` writes; nothing here reads it back.
           set: (_items: unknown, callback: () => void) => {
             callback();
           },
@@ -133,8 +110,6 @@ beforeAll(async () => {
     },
   });
 
-  // jsdom does not implement `showModal`/`close` on <dialog> (Chrome and
-  // Firefox at our minimum versions do). We substitute a minimal equivalent.
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
     configurable: true,
     value(this: HTMLDialogElement) {
@@ -148,7 +123,6 @@ beforeAll(async () => {
     },
   });
 
-  // jsdom computes no layout, and the virtualization needs the viewport height.
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
     configurable: true,
     get: () => 600,
@@ -189,7 +163,6 @@ describe('the full page', () => {
   it('keeps a window of cards in the DOM, not the whole list', () => {
     expect(cards().length).toBeGreaterThan(0);
     expect(cards().length).toBeLessThan(20);
-    // The spacer matches the full list, so the scrollbar tells the truth.
     expect(document.querySelector<HTMLElement>('#sizer')?.style.height).toBe(`${String(ITEMS * 104)}px`);
   });
 
@@ -205,7 +178,6 @@ describe('the full page', () => {
     const actions = ['read', 'favorite', 'archive', 'tags', 'delete'] as const;
     const title = (): string | null | undefined => document.querySelector('#item-title')?.textContent;
 
-    // Nothing selected: nothing to act on, and no title to show.
     for (const action of actions) expect(toolbar(action).disabled).toBe(true);
     expect(title()).toBe('');
 
@@ -243,8 +215,6 @@ describe('the full page', () => {
     expect(iconOf(withIcon)?.hidden).toBe(false);
     expect(iconOf(withIcon)?.getAttribute('src')).toBe(ICON);
 
-    // Another domain has no icon stored - the tile stays empty rather than
-    // borrowing the neighbour's.
     const without = [...cards()].find((card) => domainOf(card) !== ICON_DOMAIN);
     expect(iconOf(without)?.hidden).toBe(true);
     expect(iconOf(without)?.getAttribute('src')).toBeNull();
@@ -258,7 +228,6 @@ describe('the full page', () => {
     button?.click();
     await settle(30);
     expect(document.documentElement.dataset['theme']).toBe('dark');
-    // The choice is a setting, not a per-page toggle - the reader picks it up too.
     expect(settingsStore['reader-settings']).toMatchObject({ theme: 'dark' });
 
     document.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'd' }));
@@ -269,7 +238,6 @@ describe('the full page', () => {
     await settle(30);
     expect(document.documentElement.dataset['theme']).toBe('auto');
 
-    // And back round to the start.
     button?.click();
     await settle(30);
     expect(document.documentElement.dataset['theme']).toBe('light');
@@ -285,7 +253,6 @@ describe('the full page', () => {
     const opened = openedTabs.at(-1) ?? '';
     expect(opened).toContain('ui/reader/index.html?id=');
 
-    // The reader decides on the read mark after reaching 90% of the content.
     const id = new URL(opened).searchParams.get('id') ?? '';
     expect((await getItem(id))?.readAt).toBeNull();
   });
@@ -338,7 +305,6 @@ describe('the full page', () => {
     search.value = 'number 137';
     search.dispatchEvent(new Event('input'));
 
-    // Before the debounce elapses the list has not recomputed yet.
     await settle(60);
     expect(document.querySelector('.card__title')?.textContent).toBe(
       `Article number ${String(ITEMS - 1)}`,
@@ -375,7 +341,6 @@ describe('the full page', () => {
     key({ key: '/' });
     expect(document.activeElement).toBe(document.querySelector('#search'));
 
-    // Shortcuts must not fire inside a text field - that is ordinary typing.
     document.querySelector<HTMLInputElement>('#search')?.dispatchEvent(
       new KeyboardEvent('keydown', { bubbles: true, key: 'a' }),
     );
@@ -392,12 +357,9 @@ describe('the full page', () => {
   it('leaves Enter to the button that has focus', async () => {
     openedTabs.length = 0;
 
-    // A card is selected, the way the arrow keys leave it...
     document.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' }));
     await settle(30);
 
-    // ...and the user then tabs to an action and presses Enter on it. The
-    // button's own job is the whole job - the reader must stay shut.
     const remove = toolbar('delete');
     remove.focus();
     remove.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
@@ -410,7 +372,6 @@ describe('the full page', () => {
     const search = document.querySelector<HTMLInputElement>('#search');
     if (search === null) throw new Error('no search field');
 
-    // A space finishes the token: it leaves the field and becomes a chip.
     search.value = 'tag:rust ';
     search.dispatchEvent(new Event('input'));
     await settle(200);
@@ -421,7 +382,6 @@ describe('the full page', () => {
       expect(card.querySelector('.card__tags')?.textContent).toContain('#rust');
     }
 
-    // Enter finishes it without the space, and the words around it still search.
     search.value = 'number 33 tag:rust';
     search.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }));
     await settle(60);
@@ -443,7 +403,6 @@ describe('the full page', () => {
     search.dispatchEvent(new Event('input'));
     await settle(200);
 
-    // Still everything: the fragment is neither a filter nor a word to search for.
     expect(search.value).toBe('tag:ru');
     expect(document.querySelector<HTMLElement>('#active-tags')?.hidden).toBe(true);
     expect(cards().length).toBeGreaterThan(0);
@@ -471,7 +430,6 @@ describe('the full page', () => {
 
   it('the tags button opens the editor and a second press closes it', async () => {
     const press = (target: HTMLElement): void => {
-      // A real press is mousedown then click - the panel closes on the first.
       target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
       target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     };
@@ -500,8 +458,6 @@ describe('the full page', () => {
     await settle(30);
     expect(editor?.hidden).toBe(false);
 
-    // A tag lands in the database and the list redraws, toolbar included - the
-    // button has to go on answering for the same item.
     const input = editor?.querySelector<HTMLInputElement>('.tag-editor__input');
     if (input === undefined || input === null) throw new Error('no tag input');
     input.value = 'locomotive';
@@ -528,8 +484,6 @@ describe('the full page', () => {
     expect(toast?.textContent).toContain('Deleted');
     expect(document.querySelector('.card__title')?.textContent).not.toBe(first);
 
-    // The database is told at once, not when the toast expires: a popup closed
-    // in the meantime used to take the deletion with it.
     await expect(getItem(id)).resolves.toBeUndefined();
 
     document.querySelector<HTMLButtonElement>('.toast__action')?.click();
@@ -537,7 +491,6 @@ describe('the full page', () => {
 
     expect(document.querySelector<HTMLElement>('#toast')?.hidden).toBe(true);
     expect(document.querySelector('.card__title')?.textContent).toBe(first);
-    // And Undo is a restoration, not a deletion that never happened.
     await expect(getItem(id)).resolves.toMatchObject({ id });
   });
 
@@ -545,7 +498,6 @@ describe('the full page', () => {
     const [first, second] = [...cards()].map((card) => card.dataset['id'] ?? '');
 
     await selectFirstCard();
-    // The second click of a double click comes with `detail: 2`.
     toolbar('delete').dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
     toolbar('delete').dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
     await settle(50);
@@ -573,7 +525,6 @@ describe('the full page', () => {
     expect(document.querySelector('.card__title')?.textContent).toBe('Saved from the toolbar');
     expect(document.querySelector('.tab__count')?.textContent).toBe(String(ITEMS + 1));
 
-    // And the other way: gone elsewhere is gone here, without a reload.
     await deleteItem(saved.id);
     announceFromElsewhere();
     await settle(200);
@@ -592,7 +543,6 @@ describe('popup', () => {
 
   it('shows at most 20 items and a button to the full list', () => {
     expect(document.body.dataset['mode']).toBe('popup');
-    // 20 items in the model, in the DOM only the window visible at 600 px.
     expect(document.querySelector<HTMLElement>('#sizer')?.style.height).toBe(`${String(20 * 104)}px`);
     expect(cards().length).toBeLessThanOrEqual(20);
 

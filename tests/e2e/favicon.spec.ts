@@ -1,12 +1,3 @@
-/**
- * The site icon, end to end - the part jsdom cannot show.
- *
- * The profile here gets a host permission for the fixture's origin and nothing
- * else, which is what a real save has: `activeTab` reaches the tab the user is
- * on, never the CDN the page happens to keep its icon on. That is the shape
- * that used to leave cards without an icon - the one declared address was
- * unreachable and nothing else was tried.
- */
 import { extensionTest, expect } from './extension';
 
 declare const chrome: {
@@ -35,6 +26,5 @@ test('a card gets the icon even when the declared one is on another host', async
   await list.reload();
   const thumb = list.locator('.card__thumb');
   await expect(thumb).toBeVisible();
-  // The bytes are in the database, not an address the list goes out to fetch.
   await expect(thumb).toHaveAttribute('src', /^data:image\//);
 });

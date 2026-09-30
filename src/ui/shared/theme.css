@@ -1,16 +1,3 @@
-/*
- * The palette shared by the list and the options page - one file, so the two
- * cannot drift apart (the reader keeps its own, typographic set of variables).
- *
- * Light is the base: it sits on bare `:root`, so a page renders correctly
- * before the module has read the setting out of storage, and the default theme
- * needs no attribute at all. Every other theme only redefines the variables,
- * under `:root[data-theme=...]` - switching a theme is one attribute swap on
- * <html> (`src/lib/theme.ts`), with no reload.
- *
- * `auto` is the only theme that asks the system; it has to repeat the dark
- * values, because a media query cannot reference another rule's declarations.
- */
 :root {
   --bg: #ffffff;
   --bg-elevated: #f4f4f5;
@@ -22,7 +9,6 @@
   --danger: #b91c1c;
   --shadow: 0 8px 24px rgb(0 0 0 / 0.14);
 
-  /* Native widgets (scrollbars, form controls) follow this, not our variables. */
   color-scheme: light;
 }
 

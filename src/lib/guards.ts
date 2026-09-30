@@ -1,10 +1,3 @@
-/**
- * Type guards for data from outside the module: `runtime.sendMessage` payloads
- * arrive as `unknown` and only become typed here (CLAUDE.md 3).
- *
- * A message can come from any extension context, so we treat it as external
- * data, not as a trusted object.
- */
 import {
   EXTRACT_REQUEST,
   PARSE_REQUEST,
@@ -16,10 +9,7 @@ import {
   type SaveResultMessage,
 } from '@/types/messages';
 import type { ArticleStub, ExtractedArticle, ExtractOutcome, ExtractProblem } from '@/types/article';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+import { isRecord } from './unknown';
 
 function isString(value: unknown): value is string {
   return typeof value === 'string';
@@ -108,7 +98,6 @@ export function isOutcomeResponse(value: unknown): value is OutcomeResponse {
     isRecord(value) &&
     value['type'] === 'savely:outcome' &&
     isExtractOutcome(value['outcome']) &&
-    // The icon is optional: the offscreen document answers without one.
     (value['favicon'] === undefined || isNullableString(value['favicon']))
   );
 }

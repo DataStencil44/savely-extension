@@ -1,43 +1,24 @@
-/**
- * The extraction result contract - shared by both save paths:
- * the content script in the tab (A) and background fetch + parse (B).
- */
-
 export interface ExtractedArticle {
   title: string;
   excerpt: string;
   byline: string | null;
   siteName: string | null;
   lang: string | null;
-  /** HTML after Readability and after DOMPurify - ready to store. */
   html: string;
-  /** The same content as plain text (the source for wordCount and search). */
   text: string;
   wordCount: number;
   estReadingMinutes: number;
-  /** The address links and images were resolved against. */
   resolvedUrl: string;
-  /**
-    * Where the site icon might be fetched from, best first - the bytes are
-    * pulled by the side that has network access, which tries them in order
-    * (a declared icon often sits on a host that side cannot reach).
-    */
   faviconUrls: string[];
 }
 
-/** Why the full content could not be extracted. */
 export type ExtractProblem =
-  /** The document is not HTML (a PDF, an image, a plugin). Not saved. */
   | 'unsupported-document'
-  /** The page is empty or unreachable. Not saved. */
   | 'empty-document'
-  /** Readability returned nothing - we store the entry alone (status 'failed'). */
   | 'no-article';
 
-/** The minimum that still lands in the list when Readability gives up. */
 export interface ArticleStub {
   title: string;
-  /** Usually `og:description` or `meta[name=description]`. */
   excerpt: string;
   siteName: string | null;
   lang: string | null;

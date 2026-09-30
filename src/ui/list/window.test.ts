@@ -16,7 +16,6 @@ describe('computeWindow', () => {
 
     expect(range.totalHeight).toBe(5_000 * ROW);
     expect(range.start).toBe(0);
-    // 600 / 104 -> 6 full rows + 1 partial + 4 of overscan
     expect(range.end - range.start).toBeLessThan(20);
   });
 

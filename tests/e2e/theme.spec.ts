@@ -1,8 +1,3 @@
-/**
- * The theme is one setting for every extension page, so the thing worth
- * checking in a real browser is the part jsdom cannot show: a switch on one
- * page reaching another page that is already open, through `storage.onChanged`.
- */
 import { expect, test } from './extension';
 
 test('a theme picked on the options page reaches an open list without a reload', async ({

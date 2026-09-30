@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-/** The polyfill checks `chrome.runtime.id` as soon as the module loads. */
 const store = vi.hoisted(() => {
   const data: Record<string, unknown> = {};
   const listeners: ((changes: Record<string, { newValue: unknown }>, area: string) => void)[] = [];
@@ -57,7 +56,6 @@ describe('the theme', () => {
   });
 
   it('starts the cycle over on a value it does not know', () => {
-    // Settings written by another version must not leave the button stuck.
     expect(nextTheme('neon' as never)).toBe('light');
   });
 
@@ -75,7 +73,6 @@ describe('the theme', () => {
 
     await setTheme('dark');
     expect(document.documentElement.dataset['theme']).toBe('dark');
-    // Once from the switch itself, once from the storage event another page sees.
     expect(changes).toContain('dark');
   });
 });

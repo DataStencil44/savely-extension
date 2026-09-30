@@ -1,30 +1,15 @@
-/**
- * Reader settings in `storage.sync`.
- *
- * This is the only data that deliberately leaves the device - but through the
- * browser's own sync, not through our server (there is none). Should
- * `storage.sync` be unavailable (Firefox without an account, sync disabled), we
- * fall back to `storage.local`: better to keep settings locally than to lose
- * them.
- *
- * Data from storage is treated as external - every field goes through
- * validation and range clamping (CLAUDE.md 3).
- */
 import browser from 'webextension-polyfill';
 
+import { isRecord } from './unknown';
+
 export type FontFamily = 'serif' | 'sans' | 'dyslexia';
-/** `auto` follows the system; every other value is the user's explicit choice. */
 export type Theme = 'light' | 'dark' | 'sepia' | 'auto';
 
 export interface ReaderSettings {
-  /** Text size in px. */
   fontSize: number;
   fontFamily: FontFamily;
-  /** Column width in characters (`ch`). ~68 is a comfortable line length. */
   columnWidth: number;
-  /** The look of the whole UI - the reader, the list and the options page. */
   theme: Theme;
-  /** When `false`, images from the original are not fetched - zero outbound traffic. */
   remoteImages: boolean;
 }
 
@@ -32,8 +17,6 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   fontSize: 18,
   fontFamily: 'serif',
   columnWidth: 68,
-  // Light, not `auto`: the default has to be a look we chose and checked, the
-  // same one on every machine. Following the system is one click away.
   theme: 'light',
   remoteImages: true,
 };
@@ -46,7 +29,6 @@ const STORAGE_KEY = 'reader-settings';
 const FAMILIES: readonly string[] = ['serif', 'sans', 'dyslexia'];
 const THEMES: readonly Theme[] = ['light', 'dark', 'sepia', 'auto'];
 
-/** For a theme name read out of the page (a `data-` attribute) rather than typed in code. */
 export function isTheme(value: unknown): value is Theme {
   return THEMES.some((theme) => theme === value);
 }
@@ -55,11 +37,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(Math.round(value), min), max);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-/** Missing and junk values fall back to the defaults - settings must never break the reader. */
 export function parseSettings(value: unknown): ReaderSettings {
   if (!isRecord(value)) return { ...DEFAULT_SETTINGS };
 
@@ -89,7 +66,6 @@ export function parseSettings(value: unknown): ReaderSettings {
 
 async function area(): Promise<browser.Storage.StorageArea> {
   try {
-    // A read alone is enough to check whether the area works at all.
     await browser.storage.sync.get(STORAGE_KEY);
     return browser.storage.sync;
   } catch {
@@ -115,13 +91,12 @@ export async function saveSettings(patch: Partial<ReaderSettings>): Promise<Read
     const store = await area();
     await store.set({ [STORAGE_KEY]: next });
   } catch {
-    // A failed write must not interrupt reading - the setting holds for this session.
+    // ignore
   }
 
   return next;
 }
 
-/** A settings change in another tab should land here without a reload. */
 export function onSettingsChanged(listener: (settings: ReaderSettings) => void): void {
   try {
     browser.storage.onChanged.addListener((changes, areaName) => {
@@ -131,7 +106,6 @@ export function onSettingsChanged(listener: (settings: ReaderSettings) => void):
       listener(parseSettings(change.newValue));
     });
   } catch {
-    // No change events is a worse experience, not a broken page: the settings
-    // that were read at startup keep working until the next reload.
+    // ignore
   }
 }

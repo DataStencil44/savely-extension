@@ -1,13 +1,7 @@
 // @vitest-environment jsdom
-/**
- * The card is the same element in both modes; what differs is how much of it
- * fits. In the popup a row is 64 px and the tags share their line with the
- * metadata, so the card shows one tag and counts the rest - the count is the
- * part that must stay honest.
- */
 import { describe, expect, it, vi } from 'vitest';
 
-import type { SavedItem } from '@/lib/db';
+import type { SavedItem } from '@/types/item';
 
 import { CARD_LAYOUT, createCard } from './cards';
 
@@ -51,7 +45,6 @@ function meta(card: HTMLLIElement): string {
 
 describe('the metadata line', () => {
   it('carries the reading time and the save date on the full page', () => {
-    // `savedAt` is today's date, so the wording is relative, not a date.
     expect(meta(createCard(item([]), 0, CALLBACKS, CARD_LAYOUT.full))).toBe(
       'example.com · 2 min · today',
     );
@@ -89,7 +82,6 @@ describe('the tags on a card', () => {
 describe('pressing a card', () => {
   it('carries no action buttons - those live in the toolbar', () => {
     const card = createCard(item(['rust']), 0, CALLBACKS, CARD_LAYOUT.full);
-    // The tag chip is the only thing on a card that can be pressed.
     expect([...card.querySelectorAll('button')].map((node) => node.className)).toEqual(['chip']);
   });
 

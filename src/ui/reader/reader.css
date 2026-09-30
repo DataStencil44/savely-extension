@@ -1,10 +1,5 @@
 @import '../shared/toast.css';
 
-/*
- * The reader. Three things at once: typography (a single ~68-character
- * column), four themes and three typefaces - all through variables, so that
- * changing a setting is a single attribute swap on <html>, with no reload.
- */
 :root {
   --font-size: 18px;
   --column-width: 68ch;
@@ -19,7 +14,6 @@
   --mark-noted: #fca5a5;
 }
 
-/* Themes: an explicit choice wins, `auto` follows the system. */
 :root[data-theme='sepia'] {
   --bg: #f6efe2;
   --surface: #efe5d3;
@@ -55,12 +49,6 @@
   }
 }
 
-/*
- * Typefaces. "Dyslexia" is not a separate font file - that would be either a
- * remote resource or a few hundred kilobytes in the package. Instead we take
- * the most legible system faces and loosen the spacing, which accounts for most
- * of the benefit.
- */
 :root {
   --font-stack: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
   --letter-spacing: normal;
@@ -94,7 +82,6 @@ body {
   word-spacing: var(--word-spacing);
 }
 
-/* --- progress bar and tools --- */
 
 .progress {
   position: fixed;
@@ -168,7 +155,6 @@ body {
   outline-offset: 2px;
 }
 
-/* --- settings panel --- */
 
 .settings {
   position: sticky;
@@ -223,7 +209,6 @@ body {
   color: var(--text-muted);
 }
 
-/* --- content --- */
 
 .article {
   max-width: var(--column-width);
@@ -295,7 +280,6 @@ body {
   border-radius: 6px;
 }
 
-/* Images disabled for privacy: a frame with the alt text remains. */
 .content img.blocked {
   min-height: 3em;
   padding: 0.8em;
@@ -381,7 +365,6 @@ mark.hl--noted {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
-/* --- popover zaznaczenia --- */
 
 .popover {
   position: fixed;
@@ -434,10 +417,7 @@ mark.hl--noted {
   font: inherit;
 }
 
-/* --- toast --- */
 
-/* The shared rules are in `../shared/toast.css`; the article is set in a serif
-   with loosened letter-spacing, and a notice about the interface should not be. */
 .toast {
   bottom: 20px;
   padding: 8px 14px;

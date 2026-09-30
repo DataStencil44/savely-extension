@@ -1,11 +1,3 @@
-/**
- * Payload tests: object -> two files -> object.
- *
- * The file on the other side can be opened in a browser and broken by hand, and
- * an older version of the extension will write it differently from a newer one.
- * So what matters is not only the round trip, but what happens when the file
- * arrives damaged.
- */
 import { describe, expect, it } from 'vitest';
 
 import { gunzipFromBase64, gzipToBase64 } from './compress';
@@ -92,7 +84,6 @@ describe('buildFiles and parseFiles', () => {
     const files = await buildFiles(payload());
 
     expect(files[METADATA_FILE]).toContain('"title": "A title"');
-    // The content must not be readable directly - it is gzip in base64.
     expect(files[CONTENTS_FILE]).not.toContain('<p>');
     expect(files[CONTENTS_FILE]).toMatch(/^[A-Za-z0-9+/=]+$/);
   });

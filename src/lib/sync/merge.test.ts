@@ -1,14 +1,7 @@
-/**
- * Merge tests. A pure function, so every case is one local state plus one
- * remote state - no database, no network, no clock.
- *
- * What interests us is not so much "does it merge" as **does nothing get
- * lost**: tags and highlights added independently on two devices, a deliberate
- * deletion, and a deliberate edit after a deletion.
- */
 import { describe, expect, it } from 'vitest';
 
-import type { Highlight, ItemContent, SavedItem, SyncLocalState } from '../db';
+import type { SyncLocalState } from '../db';
+import type { Highlight, ItemContent, SavedItem } from '@/types/item';
 
 import { mergeStates } from './merge';
 import { SYNC_FORMAT, SYNC_FORMAT_VERSION, type SyncItem, type SyncPayload } from './types';
@@ -247,7 +240,6 @@ describe('content', () => {
       }),
     );
 
-    // The remote side won the item, but the local content is fresher.
     expect(result.payload.contents[URL_A]?.html).toBe('<p>local</p>');
     expect(result.plan.writes[0]?.content).toBeNull();
   });

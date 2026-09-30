@@ -1,6 +1,3 @@
-/**
- * The `highlights` store: selections in an article, each anchored in its text.
- */
 import { openDb, type Highlight } from './schema';
 
 export interface AddHighlightInput {
@@ -41,14 +38,12 @@ export async function addHighlight(input: AddHighlightInput): Promise<Highlight>
   return highlight;
 }
 
-/** One item's highlights, in the order they were added. */
 export async function listHighlights(itemId: string): Promise<Highlight[]> {
   const db = await openDb();
   const highlights = await db.getAllFromIndex('highlights', 'itemId', IDBKeyRange.only(itemId));
   return highlights.sort((a, b) => a.createdAt - b.createdAt);
 }
 
-/** The note on a highlight. Throws when the highlight is gone. */
 export async function updateHighlight(
   id: string,
   patch: Partial<Pick<Highlight, 'note'>>,

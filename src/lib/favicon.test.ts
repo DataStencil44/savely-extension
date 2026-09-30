@@ -1,12 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Site icon tests.
- *
- * The pure parts (which address, which bytes) are tested directly; `fetch` is
- * stubbed, because the point of the module is that everything it accepts turns
- * into a `data:` URL and everything else turns into `null` - never a throw that
- * could take a save down with it.
- */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -64,8 +56,6 @@ describe('findFaviconUrls', () => {
 
   it('keeps an icon from another host, then the page own-origin file behind it', () => {
     const doc = documentWith('<link rel="icon" href="https://cdn.example.net/i.png">');
-    // The order matters: the content script cannot reach the CDN, so without
-    // the second candidate a site like this had no icon at all.
     expect(findFaviconUrls(doc, PAGE)).toEqual([
       'https://cdn.example.net/i.png',
       'https://www.example.com/favicon.ico',
@@ -179,7 +169,6 @@ describe('captureFavicon', () => {
   });
 
   it('moves on to the next candidate when the first cannot be had', async () => {
-    // What CORS does to a cross-origin icon requested from the content script.
     const fetchSpy = vi.fn((url: string) =>
       url.includes('cdn.example.net')
         ? Promise.reject(new Error('Failed to fetch'))

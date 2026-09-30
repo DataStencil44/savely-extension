@@ -1,7 +1,3 @@
-/**
- * Moving data in bulk: the export dump, the import merge, the automatic
- * metadata backups, the counters and "delete everything".
- */
 import type { IDBPTransaction } from 'idb';
 
 import { normalizeTags } from '../url';
@@ -19,22 +15,17 @@ import {
   type SnapshotSummary,
 } from './schema';
 
-/** The full database contents without snapshots - what goes into a backup file. */
 export interface DatabaseDump {
   items: SavedItem[];
   contents: ItemContent[];
   highlights: Highlight[];
 }
 
-/** What happened during a merge. The numbers go straight into the options report. */
 export interface MergeOutcome {
-  /** Items that did not exist before. */
   added: number;
-  /** Items recognized by their normalized address and filled in. */
   merged: number;
   contents: number;
   highlights: number;
-  /** Records skipped at the database level (content with no item, say). */
   skipped: number;
 }
 
@@ -46,10 +37,6 @@ const EMPTY_OUTCOME: MergeOutcome = {
   skipped: 0,
 };
 
-/**
- * The whole dump in one read-only transaction, so an export is a consistent
- * picture of the database rather than three reads from three different moments.
- */
 export async function exportAll(): Promise<DatabaseDump> {
   const db = await openDb();
   const tx = db.transaction(['items', 'contents', 'highlights'], 'readonly');
@@ -62,14 +49,6 @@ export async function exportAll(): Promise<DatabaseDump> {
   return { items, contents, highlights };
 }
 
-/**
- * Merges an imported item into an existing one.
- *
- * The rule: user state on this side outweighs the file. An import may ADD
- * (tags, missing metadata, an earlier save date, a favorite), but may not take
- * away - it does not un-archive, does not drop tags, does not undo a read.
- * Otherwise restoring an old backup would undo current work.
- */
 function mergeImported(existing: SavedItem, incoming: SavedItem): SavedItem {
   const wordCount = existing.wordCount === 0 ? incoming.wordCount : existing.wordCount;
 
@@ -83,9 +62,7 @@ function mergeImported(existing: SavedItem, incoming: SavedItem): SavedItem {
     wordCount,
     estReadingMinutes:
       existing.estReadingMinutes === 0 ? incoming.estReadingMinutes : existing.estReadingMinutes,
-    // The save date is a historical fact - the earlier one wins.
     savedAt: Math.min(existing.savedAt, incoming.savedAt),
-    // A merge is a local change - it should travel on at the next sync.
     updatedAt: Date.now(),
     readAt: existing.readAt ?? incoming.readAt,
     favorite: existing.favorite || incoming.favorite,
@@ -94,20 +71,10 @@ function mergeImported(existing: SavedItem, incoming: SavedItem): SavedItem {
   });
 }
 
-/** Two highlights with the same quote and offsets are the same highlight. */
 function sameHighlight(a: Highlight, b: Highlight): boolean {
   return a.text === b.text && a.start === b.start && a.end === b.end;
 }
 
-/**
- * Writes a dump into the database in ONE transaction: either all of it lands or
- * none. A failure halfway through (running out of space, say) rolls everything
- * back - we never leave half an import or content without an item.
- *
- * The records must already be validated (see `src/lib/backup.ts`); here we
- * guard only database consistency: deduplication by address, identifier
- * collisions and orphans in `contents`/`highlights`.
- */
 export async function importDump(dump: DatabaseDump): Promise<MergeOutcome> {
   if (dump.items.length === 0 && dump.contents.length === 0 && dump.highlights.length === 0) {
     return { ...EMPTY_OUTCOME };
@@ -116,7 +83,6 @@ export async function importDump(dump: DatabaseDump): Promise<MergeOutcome> {
   return writeAtomically(['items', 'contents', 'highlights'], (tx) => writeDump(tx, dump));
 }
 
-/** The actual merge. Called only from `importDump`, inside its transaction. */
 async function writeDump(
   tx: IDBPTransaction<SavelyDB, ('items' | 'contents' | 'highlights')[], 'readwrite'>,
   dump: DatabaseDump,
@@ -126,7 +92,6 @@ async function writeDump(
   const highlights = tx.objectStore('highlights');
 
   const outcome: MergeOutcome = { ...EMPTY_OUTCOME };
-  /** id from the file -> id in the database; content and highlights are mapped through it. */
   const target = new Map<string, string>();
 
   for (const incoming of dump.items) {
@@ -139,9 +104,6 @@ async function writeDump(
       continue;
     }
 
-    // An identifier from the file may already belong to a DIFFERENT item -
-    // writing under that key would overwrite someone else's record. In that
-    // case we take a fresh id.
     const collision = await items.get(incoming.id);
     const id = collision === undefined ? incoming.id : crypto.randomUUID();
 
@@ -156,7 +118,6 @@ async function writeDump(
       outcome.skipped += 1;
       continue;
     }
-    // Local content is fresher by definition - an import does not overwrite it.
     if ((await contents.get(id)) !== undefined) {
       outcome.skipped += 1;
       continue;
@@ -190,21 +151,10 @@ async function writeDump(
   return outcome;
 }
 
-// ---------------------------------------------------------------------------
-// snapshots
-// ---------------------------------------------------------------------------
-
-/** How many backups we keep. The fourth pushes out the oldest. */
 export const SNAPSHOT_LIMIT = 3;
 
-/**
- * The gap between automatic backups. Shorter than a day, because the alarm can
- * fire late, and a missed day hurts more than a backup taken after twenty
- * hours.
- */
 export const SNAPSHOT_INTERVAL_MS = 20 * 60 * 60 * 1000;
 
-/** A metadata backup + trimming to `SNAPSHOT_LIMIT`, in one transaction. */
 export async function createSnapshot(now = Date.now()): Promise<Snapshot> {
   const db = await openDb();
   const tx = db.transaction(['items', 'snapshots'], 'readwrite');
@@ -220,7 +170,6 @@ export async function createSnapshot(now = Date.now()): Promise<Snapshot> {
   const snapshots = tx.objectStore('snapshots');
   await snapshots.put(snapshot);
 
-  // Keys from the `createdAt` index run oldest-first - the excess is cut off the front.
   const byAge = await snapshots.index('createdAt').getAllKeys();
   for (const key of byAge.slice(0, Math.max(0, byAge.length - SNAPSHOT_LIMIT))) {
     await snapshots.delete(key);
@@ -230,11 +179,6 @@ export async function createSnapshot(now = Date.now()): Promise<Snapshot> {
   return snapshot;
 }
 
-/**
- * The daily backup. `null` when there is nothing to back up or the last one is
- * still fresh - the alarm can fire more than once a day (a wake-up, a
- * reinstall).
- */
 export async function createSnapshotIfDue(now = Date.now()): Promise<Snapshot | null> {
   const db = await openDb();
   if ((await db.count('items')) === 0) return null;
@@ -250,7 +194,6 @@ export async function createSnapshotIfDue(now = Date.now()): Promise<Snapshot | 
   return createSnapshot(now);
 }
 
-/** Backup summaries, newest first. Without `items` - see `SnapshotSummary`. */
 export async function listSnapshots(): Promise<SnapshotSummary[]> {
   const db = await openDb();
   const snapshots = await db.getAll('snapshots');
@@ -264,20 +207,11 @@ export async function getSnapshot(id: string): Promise<Snapshot | undefined> {
   return db.get('snapshots', id);
 }
 
-/**
- * Restores a backup through the same merge as an import: it adds missing items
- * and fills in existing ones, but deletes nothing. Restoring a backup must not
- * take away what arrived after it was made.
- */
 export async function restoreSnapshot(id: string): Promise<MergeOutcome> {
   const snapshot = await getSnapshot(id);
   if (snapshot === undefined) throw new Error(`There is no backup with id ${id}.`);
   return importDump({ items: snapshot.items, contents: [], highlights: [] });
 }
-
-// ---------------------------------------------------------------------------
-// Statistics and wiping
-// ---------------------------------------------------------------------------
 
 export interface DataStats {
   items: number;
@@ -289,7 +223,6 @@ export interface DataStats {
   snapshots: number;
 }
 
-/** Counters for the options page. One pass over `items`, the rest from `count()`. */
 export async function dataStats(): Promise<DataStats> {
   const db = await openDb();
   const tx = db.transaction(['items', 'contents', 'highlights', 'snapshots'], 'readonly');
@@ -318,10 +251,6 @@ export async function dataStats(): Promise<DataStats> {
   return stats;
 }
 
-/**
- * "Delete all data" - we drop the whole database instead of clearing the stores
- * one by one. That also removes anything this code might forget about.
- */
 export async function clearAllData(): Promise<void> {
   await deleteDb();
 }

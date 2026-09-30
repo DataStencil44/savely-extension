@@ -1,33 +1,19 @@
-/**
- * Saving an article - two paths, one shared tail.
- *
- * A) `savePageInTab` - the page is open: the content script reads the live DOM.
- *    It sidesteps CORS and sees content behind a login, because it reads
- *    exactly what the user sees.
- * B) `saveLinkInBackground` - saving a link nobody opened: a background `fetch`
- *    plus parsing outside the tab. Requires host permission.
- *
- * Each path is **one awaited sequence**, with no state in module variables:
- * when Chrome kills the service worker halfway, nothing of ours is left except
- * what is already in IndexedDB (CLAUDE.md 5.5).
- */
 import browser from 'webextension-polyfill';
 
 import { announceChange } from './changes';
 import { saveItem, setContent, putFavicon } from './db';
 import { captureFavicon, faviconKey, faviconUrlsOf } from './favicon';
-import { isOutcomeResponse } from './guards';
+import { sendToTab } from './messaging';
 import { extractHtmlOutOfBand } from './offscreen';
 import { checkPageUrl } from './page-url';
 import { requestHostAccess } from './permissions';
+import { errorMessage } from './unknown';
 import { EXTRACT_REQUEST } from '@/types/messages';
 import type { ExtractOutcome } from '@/types/article';
 
 export interface SaveResult {
   ok: boolean;
-  /** A message ready to show the user. */
   message: string;
-  /** The save succeeded but without article content (the entry has status 'failed'). */
   degraded: boolean;
   itemId: string | null;
 }
@@ -36,21 +22,11 @@ function fail(message: string): SaveResult {
   return { ok: false, message, degraded: false, itemId: null };
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message !== '' ? error.message : 'unknown error';
-}
-
 async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * The site icon, stored under the domain of the page we just saved.
- *
- * Never part of the awaited sequence that matters: the item is already in the
- * database by the time this runs, and a domain with no icon simply shows none.
- */
 async function storeFavicon(pageUrl: string, dataUrl: string | null): Promise<void> {
   if (dataUrl === null) return;
   const domain = faviconKey(pageUrl);
@@ -58,17 +34,10 @@ async function storeFavicon(pageUrl: string, dataUrl: string | null): Promise<vo
   try {
     await putFavicon(domain, dataUrl);
   } catch {
-    // A picture is not worth reporting a failed save over.
+    // ignore
   }
 }
 
-/**
- * The shared tail of both paths: extraction result -> database.
- *
- * `requestUrl` is the address the user was saving; the `resolvedUrl` from the
- * result may differ (a redirect) and it is the one deduplication goes by.
- * `favicon` is the icon bytes when the caller could fetch them.
- */
 async function persist(
   outcome: ExtractOutcome,
   requestUrl: string,
@@ -103,9 +72,6 @@ async function persist(
 
   const { article } = outcome;
 
-  // The entry first (status 'pending'), then the content - `setContent` flips
-  // the item to 'ready' in the same transaction. If the worker dies between
-  // those steps, the list keeps an entry in 'pending', not half the data.
   const item = await saveItem({
     url: requestUrl,
     resolvedUrl: article.resolvedUrl,
@@ -126,7 +92,6 @@ async function persist(
   });
 
   await storeFavicon(article.resolvedUrl, favicon);
-  // Both writes are in - a list open in another tab can read what it now has.
   announceChange();
 
   return {
@@ -137,18 +102,16 @@ async function persist(
   };
 }
 
-/** Path A: the page is open in a tab. */
 export async function savePageInTab(tabId: number, url: string): Promise<SaveResult> {
   const problem = checkPageUrl(url);
   if (problem !== null) return fail(problem);
 
   let outcome: ExtractOutcome;
-  // The tab fetches its own icon - see the note in the content script.
   let favicon: string | null = null;
   try {
     await browser.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
-    const response: unknown = await browser.tabs.sendMessage(tabId, { type: EXTRACT_REQUEST });
-    if (!isOutcomeResponse(response)) {
+    const response = await sendToTab(tabId, { type: EXTRACT_REQUEST });
+    if (response === null) {
       return fail('The tab answered with something I do not understand - try refreshing the page.');
     }
     outcome = response.outcome;
@@ -162,12 +125,6 @@ export async function savePageInTab(tabId: number, url: string): Promise<SaveRes
   return persist(outcome, url, favicon);
 }
 
-/**
- * Path B: a link from the context menu, the page not open.
- *
- * `requestHostAccess` is the first `await` - in Firefox the permission request
- * has to come straight from a user gesture or it is rejected.
- */
 export async function saveLinkInBackground(url: string): Promise<SaveResult> {
   const problem = checkPageUrl(url);
   if (problem !== null) return fail(problem);
@@ -181,8 +138,6 @@ export async function saveLinkInBackground(url: string): Promise<SaveResult> {
 
   let response: Response;
   try {
-    // `credentials: 'omit'` - saving a link has no right to use the user's
-    // cookies. Content behind a login is saved via path A, from an open tab.
     response = await fetch(url, { credentials: 'omit', redirect: 'follow' });
   } catch (error) {
     return fail(`Could not fetch the page (${errorMessage(error)}).`);
@@ -203,8 +158,6 @@ export async function saveLinkInBackground(url: string): Promise<SaveResult> {
 
   try {
     const outcome = await extractHtmlOutOfBand(html, response.url === '' ? url : response.url);
-    // Here the icon is fetched by us: the host permission for this address was
-    // granted a moment ago, and the offscreen document does no network at all.
     const favicon = await captureFavicon(faviconUrlsOf(outcome));
     return await persist(outcome, url, favicon);
   } catch (error) {

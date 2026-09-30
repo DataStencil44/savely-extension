@@ -1,29 +1,15 @@
-/**
- * The maths of list virtualization - no DOM, so it can be tested.
- *
- * Cards have a fixed height (the CSS clips them), which makes every row's
- * position plain multiplication and means we never measure anything in the
- * page layout. That is the only reason 5000 items render smoothly: the DOM
- * always holds a dozen or so nodes, whatever the length of the list.
- */
-
 export interface WindowInput {
   scrollTop: number;
   viewportHeight: number;
   total: number;
   rowHeight: number;
-  /** How many rows to render beyond the viewport on each side. */
   overscan: number;
 }
 
 export interface WindowRange {
-  /** The index of the first rendered row (inclusive). */
   start: number;
-  /** The index just past the last rendered row. */
   end: number;
-  /** The row container's offset in pixels. */
   offsetY: number;
-  /** The spacer's height, so the scrollbar tells the truth. */
   totalHeight: number;
 }
 
@@ -45,10 +31,6 @@ export function computeWindow(input: WindowInput): WindowRange {
   return { start, end, offsetY: start * rowHeight, totalHeight };
 }
 
-/**
- * The new `scrollTop` at which row `index` is fully visible.
- * `null` when no scrolling is needed.
- */
 export function scrollTopFor(
   index: number,
   scrollTop: number,

@@ -1,11 +1,3 @@
-/**
- * An engine test against a real database (fake-indexeddb) and a fake provider
- * that keeps the files in memory - exactly the way a Gist would keep them.
- *
- * The scenario is the one the user cares about: "I saved it on my laptop, will
- * I see it on my phone?". The second device is faked by wiping the database and
- * syncing again - the remote state stays the same.
- */
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -59,7 +51,6 @@ const {
 const { parseSyncState, syncNow } = await import('./engine');
 const { METADATA_FILE } = await import('./types');
 
-/** An in-memory provider: the whole contract and nothing beyond it. */
 class MemoryProvider implements SyncProvider {
   readonly id = 'memory';
   readonly label = 'Memory';
@@ -110,7 +101,6 @@ describe('a full pass', () => {
   it('pushes the local state and the second device receives all of it', async () => {
     const provider = new MemoryProvider();
 
-    // --- device A ---
     const item = await saveItem({ url: URL_A, title: 'An article', tags: ['rust'] });
     await setContent(item.id, { html: '<p>content</p>', text: 'content' });
     await addHighlight({ itemId: item.id, text: 'a quote', start: 0, end: 7, note: 'important' });
@@ -120,7 +110,6 @@ describe('a full pass', () => {
     expect(first.added).toBe(0);
     expect(provider.files?.[METADATA_FILE]).toContain('"title": "An article"');
 
-    // --- device B: the same mailbox, an empty database ---
     await deleteDb();
     const second = await syncNow(provider);
 
@@ -133,6 +122,16 @@ describe('a full pass', () => {
     expect(restored?.tags).toEqual(['rust']);
     expect((await getContent(restored?.id ?? ''))?.html).toBe('<p>content</p>');
     expect((await listHighlights(restored?.id ?? ''))[0]?.note).toBe('important');
+  });
+
+  it('two passes started together run one after the other', async () => {
+    const provider = new MemoryProvider();
+    await saveItem({ url: URL_A });
+
+    await Promise.all([syncNow(provider), syncNow(provider)]);
+
+    expect(provider.pushes).toBe(2);
+    expect(provider.revision).toBe('rev-2');
   });
 
   it('a second pass with no changes leaves the database alone', async () => {
@@ -155,7 +154,6 @@ describe('a full pass', () => {
     await syncNow(provider);
     expect(provider.files?.[METADATA_FILE]).toContain('"tombstones"');
 
-    // Device B, which still has this item, has to lose it.
     await deleteDb();
     await saveItem({ url: URL_A, savedAt: 1_000 });
     const report = await syncNow(provider);
@@ -170,11 +168,9 @@ describe('a full pass', () => {
     const item = await saveItem({ url: URL_A, title: 'A title' });
     await syncNow(provider);
 
-    // Device B changes the state and pushes.
     await updateItem(item.id, { favorite: true, tags: ['remote'] });
     await syncNow(provider);
 
-    // Device A: an older version of the same item, with its own tag.
     await deleteDb();
     await saveItem({ url: URL_A, savedAt: 500, tags: ['local'] });
 
@@ -183,12 +179,10 @@ describe('a full pass', () => {
     const merged = await getItemByUrl(URL_A);
     expect(report.conflicts).toBe(1);
     expect(merged?.favorite).toBe(true);
-    // The tags are the union of both sides, even though one side won the item.
     expect(merged?.tags).toEqual(['local', 'remote']);
   });
 });
 
-/** What another device would push: the remote metadata, edited in place. */
 function editRemote(
   provider: MemoryProvider,
   edit: (item: { tags: string[]; updatedAt: number; highlights: unknown[] }) => void,
@@ -244,14 +238,11 @@ describe('removals', () => {
     const item = await saveItem({ url: URL_A, tags: ['rust'] });
     await syncNow(provider);
 
-    // Added here; the push that would carry it fails.
     await updateItem(item.id, { tags: ['rust', 'new'] });
     const push = vi.spyOn(provider, 'push').mockRejectedValueOnce(new Error('offline'));
     await expect(syncNow(provider)).rejects.toThrow('offline');
     push.mockRestore();
 
-    // Had the base taken 'new' in, the remote's lack of it would now read as a
-    // removal over there, and the tag would be dropped here.
     await syncNow(provider);
     expect((await getItemByUrl(URL_A))?.tags).toEqual(['new', 'rust']);
   });
@@ -289,8 +280,6 @@ describe('the stored state', () => {
   });
 
   it('never hands the options page a count that is not one', () => {
-    // What an older version, or a half-finished write, could leave behind. The
-    // page prints these straight into a sentence.
     const state = parseSyncState({
       lastReport: { added: 'lots', updated: null, deleted: -4, pushed: 2.7 },
     });

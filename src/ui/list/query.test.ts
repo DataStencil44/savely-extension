@@ -32,7 +32,6 @@ describe('parseQuery', () => {
   });
 
   it('a half-typed token does not empty the list while it is being typed', () => {
-    // The field keeps what was typed; the full-text search does not see it.
     expect(parseQuery('centre tag:ru')).toEqual({
       text: 'centre tag:ru',
       query: 'centre',
@@ -50,7 +49,6 @@ describe('parseQuery', () => {
       query: '',
       tags: ['city planning'],
     });
-    // Unclosed, so still being typed.
     expect(parseQuery('tag:"city pla')).toMatchObject({ tags: [], query: '' });
   });
 
@@ -63,7 +61,6 @@ describe('parseQuery', () => {
   });
 
   it('`tag:` on its own filters nothing and is not searched for either', () => {
-    // It is the start of a token, not a word - searching for it would empty the list.
     expect(parseQuery('tag: ')).toEqual({ text: 'tag:', query: '', tags: [] });
     expect(parseQuery('tag:', true)).toEqual({ text: 'tag:', query: '', tags: [] });
   });

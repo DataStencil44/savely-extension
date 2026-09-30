@@ -1,10 +1,4 @@
 // @vitest-environment jsdom
-/**
- * A reader test on jsdom: we mount the real `index.html`, run `reader.ts` and
- * check what the unit tests cannot see - that the content reaches the DOM after
- * sanitization, that highlights are restored, and that settings from
- * `storage.sync` really do change the appearance.
- */
 import 'fake-indexeddb/auto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -12,7 +6,6 @@ import html from './index.html?raw';
 
 type ChangeListener = (changes: Record<string, { newValue?: unknown }>, area: string) => void;
 
-/** `storage.onChanged` subscribers, so a test can play another tab writing. */
 const changeListeners = vi.hoisted((): ChangeListener[] => []);
 
 const settingsStore = vi.hoisted(() => {
@@ -42,7 +35,6 @@ const settingsStore = vi.hoisted(() => {
           get: (_keys: unknown, callback: (items: unknown) => void) => {
             callback({});
           },
-          // Where `announceChange` writes; nothing here reads it back.
           set: (_items: unknown, callback: () => void) => {
             callback();
           },
@@ -78,12 +70,10 @@ const ARTICLE = [
 
 let itemId = '';
 
-/** We fake the document and window height ourselves - jsdom computes no layout. */
 const PAGE_HEIGHT = 2_000;
 const VIEWPORT = 800;
 let scrollTop = 0;
 
-/** Scrolls the page to the given fraction of the content and waits for the handler. */
 async function scrollToRatio(ratio: number): Promise<void> {
   document.documentElement.scrollTop = ratio * (PAGE_HEIGHT - VIEWPORT);
   window.dispatchEvent(new Event('scroll'));
@@ -109,7 +99,6 @@ beforeAll(async () => {
 
   await setContent(item.id, { html: ARTICLE, text: 'irrelevant for this test' });
 
-  // A highlight stored earlier - the offsets come from the article text.
   await addHighlight({
     itemId: item.id,
     text: 'traffic patterns',
@@ -222,7 +211,6 @@ describe('the reader', () => {
   it('repaints the highlights when another context changes them', async () => {
     const [stored] = await listHighlights(itemId);
     if (stored === undefined) throw new Error('missing test data');
-    // Another tab (or a sync) removes the stored highlight and adds one of its own.
     await deleteHighlight(stored.id);
     await addHighlight({ itemId, text: 'pavements', start: 138, end: 147 });
 

@@ -1,16 +1,5 @@
-/**
- * The sync payload: object <-> provider files.
- *
- * Two files, because they have different life cycles and different sizes:
- * metadata (JSON, small, human-readable) and content (gzip + base64, large, not
- * for reading). The split also lets a "local folder" provider version the
- * metadata in git without dragging in megabytes of HTML.
- *
- * Data coming back from a provider is external data (CLAUDE.md 3): it may have
- * been hand-edited in the gist, may come from an older version of the extension
- * or from an entirely different program. Every field is validated.
- */
 import { normalizeTags, normalizeUrl } from '../url';
+import { isRecord } from '../unknown';
 
 import { gunzipFromBase64, gzipToBase64 } from './compress';
 import {
@@ -25,13 +14,8 @@ import {
   type SyncPayload,
 } from './types';
 
-/** The file is unfit for merging - better to stop than to merge junk. */
 export class SyncPayloadError extends Error {
   override readonly name = 'SyncPayloadError';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function asString(value: unknown, fallback: string): string {
@@ -90,9 +74,6 @@ function readItem(raw: unknown): SyncItem | null {
     wordCount,
     estReadingMinutes: Math.max(0, asNumber(raw['estReadingMinutes'], 0)),
     savedAt,
-    // Without `updatedAt` a conflict cannot be resolved - the safest move is
-    // to pretend the record is as old as possible, so it does not overwrite a
-    // fresher side.
     updatedAt: asNumber(raw['updatedAt'], savedAt),
     readAt: asNullableNumber(raw['readAt']),
     archived: raw['archived'] === true,
@@ -127,7 +108,6 @@ function readContents(raw: unknown): Record<string, SyncContent> {
   return contents;
 }
 
-/** Object -> files. Content goes separately, compressed. */
 export async function buildFiles(payload: SyncPayload): Promise<SyncFiles> {
   const metadata = {
     format: payload.format,
@@ -139,13 +119,11 @@ export async function buildFiles(payload: SyncPayload): Promise<SyncFiles> {
   };
 
   return {
-    // Two spaces of indentation: someone will eventually open this file in the gist viewer.
     [METADATA_FILE]: `${JSON.stringify(metadata, null, 2)}\n`,
     [CONTENTS_FILE]: await gzipToBase64(JSON.stringify(payload.contents)),
   };
 }
 
-/** Files -> object. Throws `SyncPayloadError` when this is not our data. */
 export async function parseFiles(files: SyncFiles): Promise<SyncPayload> {
   const metadataText = files[METADATA_FILE];
   if (metadataText === undefined) {
@@ -175,7 +153,6 @@ export async function parseFiles(files: SyncFiles): Promise<SyncPayload> {
   const seen = new Set<string>();
   for (const raw of rawItems) {
     const item = readItem(raw);
-    // A duplicate address in the file: the first one wins, same as on import.
     if (item !== null && !seen.has(item.url)) {
       seen.add(item.url);
       items.push(item);
@@ -198,9 +175,6 @@ export async function parseFiles(files: SyncFiles): Promise<SyncPayload> {
     try {
       contents = readContents(JSON.parse(await gunzipFromBase64(contentsText)));
     } catch {
-      // Metadata without content is still worth merging - the content can be
-      // recovered by saving the page again. Better than rejecting the whole
-      // bundle.
       contents = {};
     }
   }

@@ -1,11 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Extraction and sanitization tests on jsdom.
- *
- * Sanitization is tested directly against `sanitizeArticleHtml` rather than
- * through Readability's output - otherwise the test would say more about
- * Readability's heuristics than about our allowlist of tags.
- */
 import { describe, expect, it } from 'vitest';
 
 import { extractFromDocument, extractFromHtml } from './extract';
@@ -14,7 +7,6 @@ import { checkPageUrl } from './page-url';
 
 const BASE = 'https://daily.example/section/an-article-about-something';
 
-/** Readability needs enough text before it accepts a block as content. */
 const PARAGRAPH =
   'The city council yesterday adopted a resolution changing traffic patterns in the very centre. ' +
   'The changes cover eight streets, and the first signs will go up later this month. ' +
@@ -137,17 +129,13 @@ describe('extractFromHtml', () => {
     expect(article.siteName).toBe('The Example Daily');
     expect(article.lang).toBe('en');
     expect(article.resolvedUrl).toBe(BASE);
-    // The addresses of the icon travel with the result; the bytes are fetched
-    // by whoever can reach the site (see `lib/favicon.ts`).
     expect(article.faviconUrls).toEqual(['https://daily.example/favicon.ico']);
 
-    // the content went through sanitization
     expect(article.html).not.toContain('<script');
     expect(article.html).not.toContain('<iframe');
     expect(article.html).toContain('src="https://daily.example/media/photo.jpg"');
     expect(article.html).toContain('href="https://daily.example/analysis"');
 
-    // wordCount and reading time are computed from the text, not the HTML
     expect(article.wordCount).toBeGreaterThan(100);
     expect(article.estReadingMinutes).toBe(Math.max(1, Math.round(article.wordCount / 200)));
     expect(article.text).not.toContain('<');
@@ -186,8 +174,6 @@ describe('extractFromHtml', () => {
 describe('extractFromDocument', () => {
   it('refuses a document that is not HTML (a PDF)', () => {
     const doc = new DOMParser().parseFromString('<html><body>x</body></html>', 'text/html');
-    // jsdom cannot build a PDF document - we swap the type alone, because it is
-    // the only thing the refusal depends on.
     Object.defineProperty(doc, 'contentType', { value: 'application/pdf' });
 
     const outcome = extractFromDocument(doc, 'https://example.com/report.pdf');
@@ -204,8 +190,6 @@ describe('extractFromDocument', () => {
 
     extractFromDocument(doc, BASE);
 
-    // Readability rearranges and removes nodes - it must get a clone, not the
-    // live page.
     expect(doc.body.innerHTML).toBe(before);
   });
 });

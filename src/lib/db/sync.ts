@@ -1,10 +1,3 @@
-/**
- * Sync's side of the database: reading the local state, writing what the merge
- * decided, and the base the next merge compares against.
- *
- * The merging itself lives in `src/lib/sync/merge.ts` - here we only write what
- * it decided, plus the address -> local `id` mapping.
- */
 import type { IDBPTransaction } from 'idb';
 
 import {
@@ -20,33 +13,22 @@ import {
   type Tombstone,
 } from './schema';
 
-/**
- * The local state in the shape it is compared against the remote one.
- *
- * The key is the **normalized address**, not `id`: identifiers are local to a
- * device and will never match across the two sides of a sync.
- */
 export interface SyncLocalState {
   items: SavedItem[];
   contents: ItemContent[];
   highlights: Highlight[];
   tombstones: Tombstone[];
-  /** What this device last pushed; empty before the first push. */
   base: SyncBaseEntry[];
 }
 
-/** One item to write after the merge. `null` = that part is unchanged. */
 export interface SyncItemWrite {
-  /** `id` and `archivedKey` are set by the database - the rest comes from the merge. */
   item: Omit<SavedItem, 'id' | 'archivedKey'>;
   content: { html: string; text: string; updatedAt: number } | null;
-  /** The complete, merged set of this item's highlights. */
   highlights: Omit<Highlight, 'id' | 'itemId'>[] | null;
 }
 
 export interface SyncWritePlan {
   writes: SyncItemWrite[];
-  /** Addresses of items that disappeared on the other side (the tombstone is newer). */
   deleteUrls: string[];
   tombstones: Tombstone[];
 }
@@ -59,7 +41,6 @@ export interface SyncWriteOutcome {
   highlights: number;
 }
 
-/** All the state a merge needs, in one read-only transaction. */
 export async function collectForSync(): Promise<SyncLocalState> {
   const db = await openDb();
   const tx = db.transaction(
@@ -82,11 +63,6 @@ export async function listTombstones(): Promise<Tombstone[]> {
   return db.getAll('tombstones');
 }
 
-/**
- * Replaces the base with what was just pushed. Called only **after** the push
- * went through: a base ahead of the remote would read the remote's missing
- * entries as removals and drop what this device just added.
- */
 export async function saveSyncBase(entries: readonly SyncBaseEntry[]): Promise<void> {
   await writeAtomically(['syncBase'], async (tx) => {
     const store = tx.objectStore('syncBase');
@@ -95,20 +71,11 @@ export async function saveSyncBase(entries: readonly SyncBaseEntry[]): Promise<v
   });
 }
 
-/**
- * Forgets the base. A base describes one particular remote; measured against a
- * different one, everything it lacks would look deliberately removed.
- */
 export async function clearSyncBase(): Promise<void> {
   const db = await openDb();
   await db.clear('syncBase');
 }
 
-/**
- * Writes the merge result. One transaction across four stores: an interruption
- * halfway rolls everything back, so the database is never left "half synced"
- * (the same rule as for an import).
- */
 export async function applySync(plan: SyncWritePlan): Promise<SyncWriteOutcome> {
   return writeAtomically(['items', 'contents', 'highlights', 'tombstones'], (tx) =>
     writeSync(tx, plan),
@@ -121,17 +88,10 @@ type SyncTransaction = IDBPTransaction<
   'readwrite'
 >;
 
-/** A highlight's identity across devices: the quote plus the offsets. */
 function highlightKey(highlight: Pick<Highlight, 'text' | 'start' | 'end'>): string {
   return `${highlight.text}\u0000${String(highlight.start)}\u0000${String(highlight.end)}`;
 }
 
-/**
- * Makes an item's highlights exactly `merged`, keeping the id of every
- * highlight that survives. A reader open on the item holds those ids - handing
- * out new ones on every sync would leave its delete and note buttons pointing
- * at rows that no longer exist.
- */
 async function replaceHighlights(
   tx: SyncTransaction,
   itemId: string,
@@ -184,8 +144,6 @@ async function writeSync(tx: SyncTransaction, plan: SyncWritePlan): Promise<Sync
       outcome.contents += 1;
     }
 
-    // The merged set goes in whole: `merge` returns it only when it differs
-    // from the local one, so nothing moves here without a reason.
     if (write.highlights !== null) {
       outcome.highlights += await replaceHighlights(tx, id, write.highlights);
     }

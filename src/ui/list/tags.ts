@@ -1,10 +1,3 @@
-/**
- * The tag editor: a small panel anchored to a card.
- *
- * The panel is positioned absolutely above the list rather than inserted into
- * the card - cards must keep a fixed height, otherwise the virtualization stops
- * computing row positions correctly.
- */
 import { normalizeTags } from '@/lib/url';
 
 import { tagChip } from './chips';
@@ -12,17 +5,14 @@ import { tagChip } from './chips';
 export interface TagEditorOptions {
   host: HTMLElement;
   anchor: HTMLElement;
-  /** The item being edited - the identity behind the open/close toggle. */
   key: string;
   tags: readonly string[];
-  /** Every tag in the database - the source of the suggestions. */
   known: readonly string[];
   apply: (tags: string[]) => void;
   closed?: () => void;
 }
 
 let close: (() => void) | undefined;
-/** The item the open panel belongs to - a second press on its button closes. */
 let openKey: string | undefined;
 
 export function closeTagEditor(): void {
@@ -30,8 +20,6 @@ export function closeTagEditor(): void {
 }
 
 export function openTagEditor(options: TagEditorOptions): void {
-  // A second press on the same card's button toggles the panel shut instead of
-  // reopening it - the outside-click handler leaves that press to us.
   if (close !== undefined && openKey === options.key) {
     closeTagEditor();
     return;
@@ -119,7 +107,6 @@ export function openTagEditor(options: TagEditorOptions): void {
       event.preventDefault();
       closeTagEditor();
     }
-    // Every other key stays in the field - global shortcuts must not fire here.
     event.stopPropagation();
   });
 
@@ -128,7 +115,6 @@ export function openTagEditor(options: TagEditorOptions): void {
   renderChips();
   renderSuggestions();
 
-  // Anchoring: below the button, but never past the right edge of the window.
   const rect = anchor.getBoundingClientRect();
   const width = Math.min(280, document.documentElement.clientWidth - 16);
   host.style.width = `${String(width)}px`;
@@ -140,14 +126,10 @@ export function openTagEditor(options: TagEditorOptions): void {
   const onOutside = (event: MouseEvent): void => {
     const target = event.target as Node;
     if (host.contains(target)) return;
-    // The press on this item's own tags button belongs to its click handler,
-    // which toggles. Matching on the item rather than on the button element
-    // keeps that true after a render has replaced the button.
     const button = target instanceof Element ? target.closest('[data-tags-for]') : null;
     if (button?.getAttribute('data-tags-for') === key) return;
     closeTagEditor();
   };
-  // `setTimeout`, because the click that opened the panel is still propagating.
   const handle = setTimeout(() => {
     document.addEventListener('mousedown', onOutside);
   }, 0);

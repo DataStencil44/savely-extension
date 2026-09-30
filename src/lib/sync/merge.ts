@@ -1,38 +1,5 @@
-/**
- * Merging the local state with the remote one. A pure function - no database,
- * no network, no clock beyond the `now` that is passed in. This is where all of
- * the sync semantics live, and it is the easiest part to test.
- *
- * The rules, in this order:
- *
- * 1. **Identity by normalized address**, not by `id` - identifiers are local to
- *    a device.
- * 2. **A tombstone wins if it is newer than the change.** An item deleted on one
- *    device disappears on the other, unless someone changed it there later -
- *    then it comes back to life, because a deliberate edit is younger than the
- *    deletion.
- * 3. **Last-write-wins by `updatedAt`** for item fields. A tie goes to the local
- *    side: no movement beats movement without a reason.
- * 4. **Tags and highlights merge three ways, against the base.** These are
- *    the things the user adds and removes independently on two devices, so a
- *    whole-set winner would silently lose one side's work. The base is what
- *    this device last pushed - the state both sides last agreed on. Present on
- *    one side only: kept if that side added it (not in the base), dropped if the
- *    other side removed it (in the base). A note follows whichever side changed
- *    it from the base, and a highlight whose note was edited on one side
- *    survives its deletion on the other - an edit is younger than the deletion,
- *    as with items. With no base for an item (the first sync, an item new on
- *    both sides) there is nothing to tell a removal by, and the sets are unioned.
- * 5. **Content by the content's `updatedAt`**, independently of the item -
- *    fresher HTML is better even when the other side won the metadata.
- */
-import type {
-  Highlight,
-  SavedItem,
-  SyncBaseEntry,
-  SyncLocalState,
-  SyncWritePlan,
-} from '../db';
+import type { SyncBaseEntry, SyncLocalState, SyncWritePlan } from '../db';
+import type { Highlight, SavedItem } from '@/types/item';
 import { normalizeTags } from '../url';
 
 import {
@@ -46,24 +13,18 @@ import {
 
 export interface MergeInput {
   local: SyncLocalState;
-  /** `null` = there is nothing on the other side yet (the first push). */
   remote: SyncPayload | null;
   schemaVersion: number;
   now: number;
 }
 
 export interface MergeResult {
-  /** What to write locally. */
   plan: SyncWritePlan;
-  /** What to send to the other side. */
   payload: SyncPayload;
-  /** Items that changed on both sides - resolved by LWW. */
   conflicts: number;
-  /** The base for the next merge - store it once `payload` has been pushed. */
   base: SyncBaseEntry[];
 }
 
-/** A highlight's identity: the quote plus the offsets. `id` is local. */
 function highlightKey(highlight: { text: string; start: number; end: number }): string {
   return `${highlight.text}\u0000${String(highlight.start)}\u0000${String(highlight.end)}`;
 }
@@ -86,12 +47,6 @@ function sortHighlights(highlights: readonly SyncHighlight[]): SyncHighlight[] {
 
 type BaseHighlight = SyncBaseEntry['highlights'][number];
 
-/**
- * The same highlight with two different notes and nothing to say which is the
- * change: a note beats no note - somebody wrote it by hand, while its absence
- * is usually just an older state - and between two notes the later highlight
- * wins.
- */
 function pickNote(first: SyncHighlight, second: SyncHighlight): SyncHighlight {
   if (first.note === null && second.note !== null) return second;
   if (first.note !== null && second.note !== null && second.createdAt > first.createdAt) {
@@ -100,7 +55,6 @@ function pickNote(first: SyncHighlight, second: SyncHighlight): SyncHighlight {
   return first;
 }
 
-/** Both sides hold the highlight; the note is the only thing that can differ. */
 function mergeNote(
   local: SyncHighlight,
   remote: SyncHighlight,
@@ -114,10 +68,6 @@ function mergeNote(
   return pickNote(local, remote);
 }
 
-/**
- * Tags, three ways. Without a base this is the union it always was: nothing
- * says a tag missing on one side was removed rather than never added.
- */
 function mergeTags(
   local: readonly string[],
   remote: readonly string[],
@@ -133,7 +83,6 @@ function mergeTags(
   return normalizeTags(kept);
 }
 
-/** Highlights, three ways - see rule 4 at the top of the file. */
 function mergeHighlights(
   local: readonly SyncHighlight[],
   remote: readonly SyncHighlight[],
@@ -156,16 +105,12 @@ function mergeHighlights(
 
     const only = mine ?? theirs;
     if (only === undefined) continue;
-    // Added on this side (not in the base), or deleted on the other side after
-    // its note was edited here. Without a base `was` is always missing, which
-    // is the union.
     if (was?.note !== only.note) merged.push(only);
   }
 
   return sortHighlights(merged);
 }
 
-/** What the next merge will compare against, taken from what is being pushed. */
 function toBaseEntry(item: SyncItem): SyncBaseEntry {
   return {
     url: item.url,
@@ -212,7 +157,6 @@ function toSyncItem(item: SavedItem, highlights: readonly SyncHighlight[]): Sync
   };
 }
 
-/** Comparing the item fields alone - highlights have their own path. */
 function sameItem(a: SyncItem, b: SyncItem): boolean {
   return (
     a.resolvedUrl === b.resolvedUrl &&
@@ -269,7 +213,6 @@ function readLocal(local: SyncLocalState): LocalSide {
   return { items, contents };
 }
 
-/** The item fields to write locally - `id` and `archivedKey` are set by the database. */
 function toWritableItem(item: SyncItem): Omit<SavedItem, 'id' | 'archivedKey'> {
   return {
     url: item.url,
@@ -296,8 +239,6 @@ function toWritableItem(item: SyncItem): Omit<SavedItem, 'id' | 'archivedKey'> {
 export function mergeStates(input: MergeInput): MergeResult {
   const local = readLocal(input.local);
 
-  // A base only means something against the remote it was taken from. With
-  // nothing on the other side (a new gist, say) there is nothing to have agreed on.
   const base = new Map<string, SyncBaseEntry>();
   if (input.remote !== null) {
     for (const entry of input.local.base) base.set(entry.url, entry);
@@ -311,7 +252,6 @@ export function mergeStates(input: MergeInput): MergeResult {
     remoteContents.set(url, content);
   }
 
-  // Tombstones from both sides, keyed by address, keeping the later date.
   const tombstones = new Map<string, number>();
   for (const tombstone of input.local.tombstones) {
     tombstones.set(tombstone.url, Math.max(tombstones.get(tombstone.url) ?? 0, tombstone.deletedAt));
@@ -334,7 +274,6 @@ export function mergeStates(input: MergeInput): MergeResult {
 
     let merged: SyncItem;
     if (localItem === undefined) {
-      // A tombstone alone, nothing live on either side - nothing to merge.
       if (remoteItem === undefined) continue;
       merged = remoteItem;
     } else if (remoteItem === undefined) {
@@ -352,7 +291,6 @@ export function mergeStates(input: MergeInput): MergeResult {
       };
     }
 
-    // A deletion wins only when it is younger than the last change.
     if (deletedAt !== undefined && deletedAt >= merged.updatedAt) {
       if (localItem !== undefined) plan.deleteUrls.push(url);
       continue;
