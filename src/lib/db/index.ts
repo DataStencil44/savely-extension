@@ -21,4 +21,3 @@ export * from './items';
 export * from './content';
 export * from './highlights';
 export * from './transfer';
-export * from './sync';

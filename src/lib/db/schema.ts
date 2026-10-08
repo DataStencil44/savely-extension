@@ -272,7 +272,7 @@ export async function writeAtomically<Name extends StoreNames<SavelyDB>, Result>
 }
 
 export async function removeItemRecords(
-  tx: IDBPTransaction<SavelyDB, ('items' | 'contents' | 'highlights' | 'tombstones')[], 'readwrite'>,
+  tx: IDBPTransaction<SavelyDB, ('items' | 'contents' | 'highlights')[], 'readwrite'>,
   id: string,
 ): Promise<{ content: ItemContent | undefined; highlights: Highlight[] }> {
   const content = await tx.objectStore('contents').get(id);

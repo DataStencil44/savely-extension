@@ -11,14 +11,16 @@ import {
   summarizeProblems,
   type ImportPlan,
 } from '@/lib/backup';
+import { archiveFileName, buildBackupArchive, parseBackupArchive } from '@/lib/backup-archive';
 import { DB_VERSION, exportAll, importDump, listAllItems, type MergeOutcome } from '@/lib/library';
+import { isZip } from '@/lib/zip';
 import { element, required } from '@/ui/shared/dom';
 
 import { numbers, type Page } from './page';
 
 const REVOKE_MS = 60_000;
 
-async function downloadFile(content: string, fileName: string, mime: string): Promise<void> {
+async function downloadFile(content: BlobPart, fileName: string, mime: string): Promise<void> {
   const url = URL.createObjectURL(new Blob([content], { type: mime }));
 
   try {
@@ -41,10 +43,19 @@ function reportLine(text: string): HTMLParagraphElement {
 }
 
 export function mountTransfer(page: Page): void {
+  const exportZipButton = required<HTMLButtonElement>('#export-zip');
   const exportJsonButton = required<HTMLButtonElement>('#export-json');
   const exportHtmlButton = required<HTMLButtonElement>('#export-html');
   const input = required<HTMLInputElement>('#import-file');
   const report = required<HTMLDivElement>('#report');
+
+  async function exportZip(): Promise<void> {
+    const now = Date.now();
+    const dump = await exportAll();
+    const archive = await buildBackupArchive(dump, DB_VERSION, now);
+    await downloadFile(new Uint8Array(archive), archiveFileName(now), 'application/zip');
+    page.toast(`Archive ready: ${numbers.format(dump.items.length)} items.`);
+  }
 
   async function exportJson(): Promise<void> {
     const now = Date.now();
@@ -118,7 +129,10 @@ export function mountTransfer(page: Page): void {
   async function importFile(file: File): Promise<void> {
     let plan: ImportPlan;
     try {
-      plan = parseImportFile(file.name, await file.text());
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      plan = isZip(bytes)
+        ? await parseBackupArchive(bytes)
+        : parseImportFile(file.name, new TextDecoder().decode(bytes));
     } catch (error) {
       renderImportError(
         error instanceof ImportError ? error.message : 'the file could not be read.',
@@ -136,6 +150,13 @@ export function mountTransfer(page: Page): void {
     page.toast(`Imported ${numbers.format(outcome.added + outcome.merged)} items.`);
     await page.refresh();
   }
+
+  exportZipButton.addEventListener('click', () => {
+    void exportZip().catch((error: unknown) => {
+      console.error('[savely] ZIP export failed:', error);
+      page.toast('Could not prepare the archive.');
+    });
+  });
 
   exportJsonButton.addEventListener('click', () => {
     void exportJson().catch((error: unknown) => {

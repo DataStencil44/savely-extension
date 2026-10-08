@@ -11,7 +11,6 @@ import { mountBackups } from './backups-panel';
 import { createConfirm } from './confirm';
 import { numbers, type Page, type Section } from './page';
 import { mountStats } from './stats-panel';
-import { mountSync } from './sync-panel';
 import { mountTransfer } from './transfer-panel';
 
 const toastEl = required<HTMLDivElement>('#toast');
@@ -60,7 +59,7 @@ function wireThemes(): void {
 }
 
 async function main(): Promise<void> {
-  sections.push(mountStats(), mountSync(page), mountBackups(page));
+  sections.push(mountStats(), mountBackups(page));
   mountTransfer(page);
 
   required<HTMLButtonElement>('#open-list').addEventListener('click', () => {

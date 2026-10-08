@@ -56,12 +56,18 @@ const downloads = vi.hoisted(() => {
 });
 
 const { buildBackup, serializeBackup } = await import('@/lib/backup');
+const { buildBackupArchive } = await import('@/lib/backup-archive');
 const { DB_VERSION, deleteDb, listSnapshots, saveItem, setContent } = await import('@/lib/db');
 
 function settle(ms = 30): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+async function nextDownload(before: number): Promise<{ filename: string; url: string } | undefined> {
+  for (let waited = 0; downloads.length === before && waited < 2_000; waited += 20) await settle(20);
+  return downloads.at(-1);
 }
 
 function click(selector: string): void {
@@ -72,7 +78,7 @@ function text(selector: string): string {
   return document.querySelector<HTMLElement>(selector)?.textContent ?? '';
 }
 
-async function importFile(name: string, content: string): Promise<void> {
+async function importFile(name: string, content: BlobPart): Promise<void> {
   const input = document.querySelector<HTMLInputElement>('#import-file');
   if (input === null) throw new Error('no file input');
 
@@ -80,8 +86,10 @@ async function importFile(name: string, content: string): Promise<void> {
     configurable: true,
     value: [new File([content], name, { type: 'text/plain' })],
   });
+  const before = text('#report');
   input.dispatchEvent(new Event('change'));
-  await settle(80);
+  for (let waited = 0; text('#report') === before && waited < 2_000; waited += 20) await settle(20);
+  await settle(40);
 }
 
 beforeAll(async () => {
@@ -126,16 +134,6 @@ describe('the options page', () => {
     expect(text('#storage')).toBe('Storage used: 5.0 MB of 1.0 GB (0.5%).');
   });
 
-  it('the sync section says where the data goes before asking for a token', () => {
-    const location = text('#sync-location');
-    expect(location).toContain('private Gist');
-    expect(location).toContain('not encrypted either');
-
-    expect(document.querySelector<HTMLElement>('#sync-connect')?.hidden).toBe(false);
-    expect(document.querySelector<HTMLElement>('#sync-connected')?.hidden).toBe(true);
-    expect(text('#sync-secret-label')).toBe('GitHub personal access token');
-  });
-
   it('the theme buttons switch the whole UI and mark the current one', async () => {
     const buttons = [...document.querySelectorAll<HTMLButtonElement>('[data-theme-choice]')];
     expect(buttons.map((button) => button.dataset['themeChoice'])).toEqual([
@@ -164,6 +162,13 @@ describe('the options page', () => {
     const file = downloads.at(-1);
     expect(file?.filename).toMatch(/^savely-backup-\d{4}-\d{2}-\d{2}\.json$/);
     expect(file?.url).toBe('blob:savely/test');
+  });
+
+  it('exports a full backup as a ZIP', async () => {
+    const before = downloads.length;
+    click('#export-zip');
+
+    expect((await nextDownload(before))?.filename).toMatch(/^savely-backup-\d{4}-\d{2}-\d{2}\.zip$/);
   });
 
   it('exports the bookmarks as a separate HTML file', async () => {
@@ -218,6 +223,41 @@ describe('the options page', () => {
     expect(document.querySelector('.stat__value')?.textContent).toBe('3');
   });
 
+  it('imports a ZIP backup, whatever the file is called', async () => {
+    const item = {
+      id: 'from-zip',
+      url: 'https://d.example/4',
+      resolvedUrl: 'https://d.example/4',
+      title: 'From the archive',
+      excerpt: '',
+      byline: null,
+      siteName: null,
+      lang: null,
+      wordCount: 100,
+      estReadingMinutes: 1,
+      savedAt: 1_000,
+      updatedAt: 1_000,
+      readAt: null,
+      archived: false,
+      favorite: false,
+      tags: [],
+      contentHash: null,
+      status: 'ready' as const,
+      readingProgress: 0,
+      archivedKey: 0 as const,
+    };
+    const archive = await buildBackupArchive(
+      { items: [item], contents: [], highlights: [] },
+      DB_VERSION,
+      Date.now(),
+    );
+
+    await importFile('from-firefox', new Uint8Array(archive));
+
+    expect(text('#report')).toContain('Added 1 new items');
+    expect(document.querySelector('.stat__value')?.textContent).toBe('4');
+  });
+
   it('a Pocket CSV import reports the skipped rows with a reason', async () => {
     await importFile(
       'pocket.csv',
@@ -232,7 +272,7 @@ describe('the options page', () => {
     await importFile('junk.json', '{this is not json');
 
     expect(text('#report')).toContain('Nothing was imported');
-    expect(document.querySelector('.stat__value')?.textContent).toBe('3');
+    expect(document.querySelector('.stat__value')?.textContent).toBe('4');
   });
 
   it('takes a backup on demand and shows it in the list', async () => {
@@ -240,7 +280,7 @@ describe('the options page', () => {
     await settle(80);
 
     expect(await listSnapshots()).toHaveLength(1);
-    expect(text('#snapshots')).toContain('3 items');
+    expect(text('#snapshots')).toContain('4 items');
   });
 
   it('wiping the data requires confirmation', async () => {
@@ -249,11 +289,11 @@ describe('the options page', () => {
 
     const dialog = document.querySelector<HTMLDialogElement>('#confirm-dialog');
     expect(dialog?.open).toBe(true);
-    expect(text('#confirm-text')).toContain('3 items');
+    expect(text('#confirm-text')).toContain('4 items');
 
     click('#confirm-cancel');
     await settle();
-    expect(document.querySelector('.stat__value')?.textContent).toBe('3');
+    expect(document.querySelector('.stat__value')?.textContent).toBe('4');
 
     click('#wipe');
     await settle();

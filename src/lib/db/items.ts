@@ -171,7 +171,7 @@ export interface RemovedItem {
 
 export async function deleteItem(id: string): Promise<RemovedItem | null> {
   const db = await openDb();
-  const tx = db.transaction(['items', 'contents', 'highlights', 'tombstones'], 'readwrite');
+  const tx = db.transaction(['items', 'contents', 'highlights'], 'readwrite');
   const existing = await tx.objectStore('items').get(id);
 
   if (existing === undefined) {
@@ -180,7 +180,6 @@ export async function deleteItem(id: string): Promise<RemovedItem | null> {
   }
 
   const { content, highlights } = await removeItemRecords(tx, id);
-  await tx.objectStore('tombstones').put({ url: existing.url, deletedAt: Date.now() });
 
   await tx.done;
   return { item: existing, content, highlights };
@@ -188,14 +187,13 @@ export async function deleteItem(id: string): Promise<RemovedItem | null> {
 
 export async function restoreItem(removed: RemovedItem): Promise<void> {
   const db = await openDb();
-  const tx = db.transaction(['items', 'contents', 'highlights', 'tombstones'], 'readwrite');
+  const tx = db.transaction(['items', 'contents', 'highlights'], 'readwrite');
 
   await tx.objectStore('items').put(removed.item);
   if (removed.content !== undefined) await tx.objectStore('contents').put(removed.content);
   for (const highlight of removed.highlights) {
     await tx.objectStore('highlights').put(highlight);
   }
-  await tx.objectStore('tombstones').delete(removed.item.url);
 
   await tx.done;
 }

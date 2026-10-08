@@ -10,7 +10,6 @@ import {
   getItemByUrl,
   listAllItems,
   listHighlights,
-  listTombstones,
   openDb,
   restoreItem,
   saveItem,
@@ -193,7 +192,7 @@ describe('deleteItem', () => {
 });
 
 describe('restoreItem', () => {
-  it('puts back everything the deletion took, grave included', async () => {
+  it('puts back everything the deletion took', async () => {
     const item = await saveItem({ url: 'https://example.com/undo', title: 'Undo me' });
     await updateItem(item.id, { tags: ['rail'], favorite: true });
     await setContent(item.id, { html: '<p>content</p>', text: 'content' });
@@ -201,7 +200,6 @@ describe('restoreItem', () => {
 
     const removed = await deleteItem(item.id);
     if (removed === null) throw new Error('nothing was deleted');
-    await expect(listTombstones()).resolves.toHaveLength(1);
 
     await restoreItem(removed);
 
@@ -211,7 +209,6 @@ describe('restoreItem', () => {
     expect(back?.favorite).toBe(true);
     await expect(getContent(item.id)).resolves.toMatchObject({ text: 'content' });
     await expect(listHighlights(item.id)).resolves.toHaveLength(1);
-    await expect(listTombstones()).resolves.toEqual([]);
   });
 });
 

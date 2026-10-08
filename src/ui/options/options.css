@@ -206,61 +206,6 @@ code {
 }
 
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 240px;
-  flex: 1;
-}
-
-.field__label {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.field__input {
-  width: 100%;
-  padding: 7px 10px;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font: inherit;
-}
-
-.field__input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.warn {
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--danger);
-  border-radius: 6px;
-}
-
-.connect {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: flex-start;
-}
-
-.connect[hidden] {
-  display: none;
-}
-
-.settings__check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-
 .snapshots {
   margin: 0 0 12px;
   padding: 0;

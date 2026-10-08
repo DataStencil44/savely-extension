@@ -1,290 +1,205 @@
 # Savely
 
-Read-it-later bez backendu. Zapisujesz stronę jednym kliknięciem, Savely
-wyciąga z niej czystą treść i pozwala ją przeczytać offline — we własnym
-czytniku, z podświetleniami i notatkami. Wszystko zostaje na Twoim urządzeniu:
-**żadnego serwera, konta, chmury ani telemetrii**.
+A read-it-later browser extension with no backend. Save a page with one click,
+Savely pulls out the clean article text, and you read it later — offline, in
+its own reader, with highlights and notes. Everything stays on your device:
+**no server, no account, no cloud, no telemetry**.
 
-Manifest V3, jedno źródło → dwa artefakty: Chromium (Chrome, Brave, Vivaldi,
-Edge, Opera) i Firefox (desktop + Android).
+Manifest V3, one source → two builds: Chromium (Chrome, Edge, Brave, Vivaldi,
+Opera) and Firefox (desktop and Android).
 
 ---
 
-## Status funkcji
+## Features
 
-| Obszar | Stan | Co dokładnie |
+| Area | Status | Details |
 |---|---|---|
-| Zapis strony | ✅ | pasek narzędzi, menu kontekstowe (strona i link), skrót `Ctrl+Shift+S` |
-| Ekstrakcja treści | ✅ | `@mozilla/readability` na żywym DOM-ie karty; zapis linku w tle przez `fetch` + dokument offscreen (Chromium) |
-| Sanityzacja | ✅ | DOMPurify, lista dozwolonych tagów, `javascript:`/`data:text/html` odrzucane, testy na zestawie wektorów XSS |
-| Baza lokalna | ✅ | IndexedDB (`idb`), sześć magazynów, jawne migracje, schemat v5 |
-| Lista | ✅ | wirtualizacja, zakładki (inbox/ulubione/archiwum), tagi, pełnotekstowe wyszukiwanie (`flexsearch`) z filtrem `tag:nazwa` w polu szukania, skróty klawiszowe, cofanie usunięcia, ikona strony na karcie, przełącznik motywu (`d`); akcje w pasku u góry działają na zaznaczonej karcie, dwuklik na karcie otwiera oryginał |
-| Motyw | ✅ | jasny (domyślny), ciemny, sepia, systemowy — jedno ustawienie dla listy, opcji i czytnika; przełącznik w liście, na stronie opcji i w czytniku |
-| Czytnik | ✅ | typografia (rozmiar, krój, szerokość, motyw), pasek postępu, pozycja scrolla, podświetlenia z notatkami, auto-oznaczanie po 90%, tryb bez obrazków zdalnych |
-| Przenośność danych | ✅ | eksport JSON i zakładek Netscape, import JSON i CSV z Pocketa, dobowe kopie metadanych, strona opcji z licznikami i kasowaniem bazy |
-| Synchronizacja urządzeń | ✅ | opcjonalna, domyślnie wyłączona; wymienny `SyncProvider`, na start prywatny GitHub Gist (patrz niżej) |
-| Ustawienia | ✅ | `storage.sync` z fallbackiem na `storage.local` |
-| Firefox na Androida | ✅ | ten sam kod, UI od 360 px, wejście do opcji także z listy |
-| Wysyłka na Kindle | ❌ | poza zakresem — wymagałaby serwera pocztowego |
-| Własny serwer / konto Savely | ❌ | świadomie — synchronizacja idzie przez miejsce należące do Ciebie, nie przez nas |
-| Szyfrowanie danych synchronizacji | ❌ | dane w Gistcie są prywatne, ale nieszyfrowane (patrz niżej) |
-| Safari | ❌ | poza zakresem |
-| Chrome na Androidzie | ❌ | przeglądarka nie obsługuje rozszerzeń |
-| Tłumaczenia UI | ❌ | interfejs wyłącznie po angielsku (brak `_locales`) |
-| AI, podsumowania, TTS | ❌ | poza zakresem MVP |
+| Saving | ✅ | toolbar, context menu (page and link), `Ctrl+Shift+S` |
+| Extraction | ✅ | `@mozilla/readability` on the tab's live DOM; links saved in the background via `fetch` + an offscreen document (Chromium) |
+| Sanitizing | ✅ | DOMPurify with an allow-list, `javascript:` / `data:text/html` rejected, tested against a set of XSS vectors |
+| Local database | ✅ | IndexedDB (`idb`) with explicit, incremental migrations |
+| List | ✅ | virtualized, inbox / favourites / archive, tags, full-text search (`flexsearch`) with `tag:name` in the search box, keyboard shortcuts, undo delete, site icons, theme toggle (`d`) |
+| Themes | ✅ | light (default), dark, sepia, system — one setting for the list, options and reader |
+| Reader | ✅ | typography (size, font, width, theme), progress bar, scroll position, highlights with notes, marked as read at 90%, optional no-remote-images mode |
+| Data portability | ✅ | full backup as ZIP or JSON, Netscape bookmarks export, import of ZIP, JSON and Pocket CSV, daily local backups, storage usage and delete-all on the options page |
+| Settings | ✅ | `storage.sync` with a `storage.local` fallback |
+| Firefox for Android | ✅ | same code, UI usable from 360 px wide |
+| Device sync | ❌ | deliberately left out until it can be end-to-end encrypted; move data between browsers with a ZIP export/import |
+| Savely server / account | ❌ | by design — everything stays in the browser |
+| Send to Kindle, AI, summaries, TTS | ❌ | out of scope |
+| Safari, Chrome for Android | ❌ | out of scope / no extension support |
+| UI translations | ❌ | English only |
 
 ---
 
-## Praca z repo
+## Install
+
+From the stores (once published): Chrome Web Store and addons.mozilla.org.
+
+From a release: download `chrome.zip` or `firefox.zip` from the
+[Releases](../../releases) page.
+
+- **Chromium:** unzip, open `chrome://extensions`, turn on Developer mode,
+  **Load unpacked** → the unzipped folder.
+- **Firefox:** `about:debugging` → *This Firefox* → **Load Temporary Add-on**
+  → `manifest.json` inside the unzipped folder (removed on restart; for a
+  permanent install use the AMO version).
+
+---
+
+## Development
+
+Requires Node 20+.
 
 ```bash
 npm ci
 npm run build           # dist/chrome + dist/firefox
-npm run check           # lint + typecheck + testy jednostkowe
+npm run check           # lint + typecheck + unit tests
 ```
 
 ### Chromium
 
 ```bash
-npm run dev:chrome      # build w trybie watch
+npm run dev:chrome      # watch build
 ```
-`chrome://extensions` → tryb dewelopera → **Load unpacked** → `dist/chrome`.
-Po zmianie w kodzie kliknij „Reload" na kafelku rozszerzenia.
+
+`chrome://extensions` → Developer mode → **Load unpacked** → `dist/chrome`.
+Click **Reload** on the extension card after a change.
 
 ### Firefox (desktop)
 
-Dwa terminale — build w watchu i `web-ext`, który sam przeładowuje dodatek po
-każdej zmianie w `dist/firefox`:
+Two terminals — a watch build and `web-ext`, which reloads the add-on on every
+change in `dist/firefox`:
 
 ```bash
-npm run dev:firefox     # terminal 1: build w trybie watch
-npm run start:firefox   # terminal 2: web-ext run + auto-reload
+npm run dev:firefox     # terminal 1
+npm run start:firefox   # terminal 2
 ```
 
-### Firefox na Androidzie
+### Firefox for Android
 
-Wymaga włączonego debugowania USB na telefonie, `adb` w `PATH` i Firefoksa
-(Nightly/Beta/Release) z włączoną opcją debugowania zdalnego:
+Needs USB debugging on the phone, `adb` in `PATH` and remote debugging enabled
+in Firefox:
 
 ```bash
 npm run dev:firefox
 npm run start:android
-# przy kilku podłączonych urządzeniach:
-npm run start:android -- --android-device <ID z `adb devices`>
+npm run start:android -- --android-device <ID from `adb devices`>
 ```
 
 ---
 
-## Polecenia
+## Commands
 
-| Polecenie | Co robi |
+| Command | What it does |
 |---|---|
-| `npm run dev:chrome` / `dev:firefox` | build w trybie watch do `dist/<target>` |
-| `npm run build` | produkcyjny build obu wariantów |
-| `npm run build:chrome` / `build:firefox` | pojedynczy wariant |
-| `npm run start:firefox` | `web-ext run` na `dist/firefox` z auto-reloadem |
-| `npm run start:android` | to samo z `--target firefox-android` |
-| `npm test` / `npm run test:watch` | testy jednostkowe (Vitest) |
-| `npm run e2e` | testy e2e (Playwright + Chromium z załadowanym rozszerzeniem) |
-| `npm run e2e:install` | pobiera Chromium dla Playwrighta |
-| `npm run lint` / `lint:fix` | ESLint po `src/`, `build/`, `tests/` |
-| `npm run lint:ext` | `web-ext lint` na `dist/firefox` (wymaga wcześniejszego builda) |
+| `npm run dev:chrome` / `dev:firefox` | watch build into `dist/<target>` |
+| `npm run build` | production build of both targets |
+| `npm run build:chrome` / `build:firefox` | a single target |
+| `npm run start:firefox` | `web-ext run` on `dist/firefox` with auto-reload |
+| `npm run start:android` | the same with `--target firefox-android` |
+| `npm test` / `npm run test:watch` | unit tests (Vitest) |
+| `npm run e2e` | end-to-end tests (Playwright + Chromium with the extension loaded) |
+| `npm run e2e:install` | downloads Chromium for Playwright |
+| `npm run lint` / `lint:fix` | ESLint over `src/`, `build/`, `tests/` |
+| `npm run lint:ext` | `web-ext lint` on `dist/firefox` (build first) |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run check` | lint + typecheck + testy |
-| `npm run pack` | `artifacts/chrome.zip` i `artifacts/firefox.zip` |
-| `npm run pack:source` | `artifacts/source.zip` — źródła z `HEAD` dla recenzji AMO |
-| `npm run clean` | usuwa `dist/` i `artifacts/` |
+| `npm run check` | lint + typecheck + unit tests |
+| `npm run release:chrome` | build + `artifacts/chrome.zip` |
+| `npm run release:firefox` | build + `artifacts/firefox.zip` + `artifacts/source.zip` |
+| `npm run pack` | both store zips from an existing build |
+| `npm run pack:source` | `artifacts/source.zip` — sources from `HEAD` for AMO review |
+| `npm run clean` | removes `dist/` and `artifacts/` |
 
 ---
 
-## Synchronizacja między urządzeniami
+## Tests
 
-Opcjonalna, domyślnie wyłączona, bez naszego serwera. Włącza się na stronie
-opcji (⚙ na liście albo `about:addons` / `chrome://extensions`).
+**Unit (Vitest, `src/**/*.test.ts`)** — next to the code they test: database
+schema, migrations and import merging, a set of XSS vectors for the sanitizer,
+backup formats and the Pocket CSV parser, ZIP read/write, extraction, search,
+settings, highlight offsets, and the list, reader and options pages mounted on
+jsdom from their real HTML.
 
-### GitHub Gist — jak to działa
-
-1. Wygeneruj token: **github.com → Settings → Developer settings → Personal
-   access tokens**. Klasyczny token potrzebuje wyłącznie uprawnienia `gist`;
-   fine-grained — `Gists: read and write`.
-2. Wklej go w opcjach i kliknij **Połącz**. Przy pierwszym połączeniu
-   przeglądarka zapyta o dostęp do `api.github.com` — bez tego nic nie ruszy.
-3. Savely znajdzie istniejący gist Savely na Twoim koncie albo utworzy nowy,
-   prywatny, przy pierwszej synchronizacji. Drugie urządzenie z tym samym
-   tokenem podepnie się do tego samego gista.
-4. **Synchronizuj teraz** działa ręcznie; przełącznik uruchamia alarm co 30 minut.
-
-W gistcie lądują dwa pliki: `savely-sync.json` (metadane — adresy, tytuły, tagi,
-podświetlenia, groby po skasowanych pozycjach; czytelny JSON) oraz
-`savely-contents.json.gz.base64` (treści artykułów, gzip + base64).
-
-### Co musisz wiedzieć o prywatności
-
-**Prywatny gist nie jest zaszyfrowany.** Nie jest indeksowany i nie widać go na
-Twoim profilu, ale każdy, kto ma ten token albo dostęp do Twojego konta GitHub,
-przeczyta wszystko, co zapisałeś — łącznie z pełną treścią artykułów. Token
-zostaje w `storage.local` na tym urządzeniu i **nigdy** nie trafia do
-`storage.sync`, więc nie wędruje między przeglądarkami. „Rozłącz" kasuje token
-z urządzenia i nie rusza danych w gistcie ani lokalnych.
-
-### Rozwiązywanie konfliktów
-
-- Tożsamość pozycji to **znormalizowany adres** (bez `utm_*`), nie identyfikator.
-- Pola pozycji: wygrywa strona z nowszym `updatedAt` (remis → lokalna).
-- **Tagi i podświetlenia się sumują** — nigdy nie nadpisują. Przy tym samym
-  cytacie wygrywa wersja z notatką.
-- Treść idzie za własnym `updatedAt`, niezależnie od metadanych.
-- Kasowanie zostawia grób. Pozycja znika na drugim urządzeniu, chyba że ktoś ją
-  tam zmienił **po** kasowaniu — wtedy wraca, bo świadoma edycja jest młodsza.
-- Gdy drugie urządzenie zsynchronizowało się w międzyczasie, zapis jest
-  przerywany z komunikatem zamiast nadpisywać cudze dane — wystarczy kliknąć
-  jeszcze raz.
-
-### Ograniczenia
-
-- Gist ma praktyczny limit rozmiaru; przy pliku powyżej ~9 MB Savely odmówi
-  wysyłki i powie o tym wprost (spakowana treść kilkuset artykułów mieści się
-  spokojnie).
-- Nie ma szyfrowania end-to-end ani historii wersji po naszej stronie —
-  historię prowadzi sam Gist.
-- Automat chodzi tylko wtedy, gdy przeglądarka działa.
-
-### Dopisanie własnego providera
-
-`SyncProvider` (`src/lib/sync/types.ts`) dostaje nazwane pliki tekstowe
-i nieprzezroczysty znacznik wersji — nic więcej. Provider „lokalny folder"
-(File System Access API, Chrome-only) to jeden nowy plik obok `github-gist.ts`
-i jedna linia w `src/lib/sync/index.ts`; jego `prompt.kind: 'picker'` sprawi, że
-opcje pokażą przycisk wyboru folderu zamiast pola na token, a scalanie, alarm
-i reszta UI nie zauważą różnicy.
-
-## Testy
-
-**Jednostkowe (Vitest, `src/**/*.test.ts`)** — obok kodu, który testują:
-
-- `lib/db.test.ts` — schemat, migracje przyrostowe, deduplikacja po adresie,
-  paginacja keysetem, scalanie importu, atomowość, kopie
-- `lib/sanitize.test.ts` — zestaw wektorów XSS (script, `onerror`, `svg onload`,
-  `javascript:` w pięciu zapisach, `data:text/html`, `srcdoc`, mXSS…);
-  asercje idą po gotowym DOM-ie, nie po stringu
-- `lib/backup.test.ts` — formaty eksportu, walidacja importu, parser CSV Pocketa
-- `lib/sync/*.test.ts` — scalanie (LWW, sumy tagów i podświetleń, groby),
-  ładunek gzip+base64 i jego uszkodzone warianty, provider Gist z podstawionym
-  `fetch` (token nie wychodzi poza `storage.local`, wyścig kończy się błędem),
-  oraz przejście „dwóch urządzeń" na prawdziwej bazie
-- `lib/extract.test.ts`, `lib/search.test.ts`, `lib/settings.test.ts`
-- `ui/reader/highlight.test.ts` — offsety podświetleń i odnajdywanie cytatu po
-  zmianie treści
-- `ui/list/*.test.ts`, `ui/reader/reader.test.ts`, `ui/options/options.test.ts` —
-  widoki montowane na jsdom z prawdziwego HTML-a
-
-**E2E (Playwright, `tests/e2e/`)** — Chromium z załadowanym rozszerzeniem:
-zapis strony z lokalnego fixture'a, pojawienie się jej na liście, otwarcie
-w czytniku, brak ładunków XSS w treści, brak duplikatu przy ponownym zapisie.
+**End-to-end (Playwright, `tests/e2e/`)** — Chromium with the extension loaded:
+saving a page from a local fixture, seeing it in the list, opening it in the
+reader, no XSS payloads in the content, no duplicate on re-save, tags, themes
+and site icons.
 
 ```bash
-npm run e2e:install     # raz
+npm run e2e:install     # once
 npm run build:chrome
 npm run e2e
 ```
 
-E2E ładuje **kopię** `dist/chrome` z `<all_urls>` przeniesionym do
-`host_permissions` — w automatyzacji nie ma gestu użytkownika ani okna zgody.
-Produkcyjny build zostaje bez zmian.
+The e2e run loads a **copy** of `dist/chrome` with `<all_urls>` moved into
+`host_permissions`, because automation has no user gesture for the permission
+prompt. The production build is unchanged.
 
-Firefoksa w e2e nie ma: Playwright nie potrafi załadować tymczasowego dodatku
-MV3 do Gecko. Tę stronę pilnują `npm run lint:ext` w CI i `npm run start:firefox`
-przy pracy ręcznej.
+Firefox has no e2e: Playwright cannot load a temporary MV3 add-on into Gecko.
+That side is covered by `npm run lint:ext` in CI and `npm run start:firefox`
+by hand.
 
-**CI** (`.github/workflows/ci.yml`): lint → typecheck → testy → build obu
-wariantów → `web-ext lint`, osobne zadanie e2e, a przy tagu `v*` build, paczki
-i wydanie GitHub z `chrome.zip` i `firefox.zip`.
+**CI** (`.github/workflows/ci.yml`): lint → typecheck → unit tests → build of
+both targets → `web-ext lint`, a separate e2e job, and on a `v*` tag the store
+packages and a GitHub release.
 
-### Znane ostrzeżenia `web-ext lint`
+### Known `web-ext lint` warnings
 
-Zero błędów jest warunkiem przejścia CI. Zostaje osiem ostrzeżeń, wszystkie
-w kodzie zależności i wszystkie nieszkodliwe:
+Zero errors is the CI pass condition. Eight warnings remain, all inside bundled
+dependencies:
 
-- `DANGEROUS_EVAL` ×2 w `list.js` — `flexsearch` ma w bundlu ścieżkę dla Web
-  Workera, która składa funkcje ze stringów. Nie używamy trybu workera, więc
-  ten kod nigdy się nie wykonuje (a CSP MV3 i tak by na to nie pozwoliło).
+- `DANGEROUS_EVAL` ×2 in `list.js` — FlexSearch's Web Worker code path, which
+  Savely never enables (and MV3 CSP would block anyway).
 - `UNSAFE_VAR_ASSIGNMENT` ×6 (`content.js`, `chunks/extract-*`,
-  `chunks/sanitize-*`) — przypisania do `innerHTML` wewnątrz DOMPurify
-  i Readability, czyli w samym sanityzatorze i parserze. Nasz kod wstawia treść
-  wyłącznie przez `RETURN_DOM_FRAGMENT` + `append()`.
+  `chunks/sanitize-*`) — `innerHTML` inside DOMPurify and Readability
+  themselves. Savely inserts article HTML only through
+  `RETURN_DOM_FRAGMENT` + `append()`.
 
 ---
 
-## Publikacja
+## Publishing
 
-Wersja ma jedno źródło prawdy: `package.json` → manifest. Wydanie zaczyna się od
-`npm version <patch|minor|major>` i pushu tagu `vX.Y.Z`; CI zbuduje paczki
-(`chrome.zip`, `firefox.zip`, `source.zip`) i utworzy wydanie GitHub. Do
-sklepów wysyłasz pliki z tego wydania.
+Each store gets its own package, built by its own command:
 
-Teksty do formularzy obu sklepów (opis, uzasadnienia uprawnień, notatka dla
-recenzenta AMO) są w [`store/LISTING.md`](store/LISTING.md), polityka
-prywatności — w [`store/PRIVACY.md`](store/PRIVACY.md).
+| Store | Command | Upload | Guide and form texts |
+|---|---|---|---|
+| Chrome Web Store | `npm run release:chrome` | `artifacts/chrome.zip` | [`store/chrome-web-store.md`](store/chrome-web-store.md) |
+| addons.mozilla.org | `npm run release:firefox` | `artifacts/firefox.zip`, `artifacts/source.zip` | [`store/firefox-amo.md`](store/firefox-amo.md) |
 
-### addons.mozilla.org (Firefox + Firefox na Androida)
+Shared privacy policy: [`store/PRIVACY.md`](store/PRIVACY.md).
 
-1. **ID dodatku** to `{d45c453b-44c5-411b-925a-ec28396362a7}`
-   (`GECKO_ID` w `build/make-manifest.ts`). Jest na zawsze — zmiana oznacza
-   nowy dodatek.
-2. `npm run build && npm run pack && npm run pack:source` →
-   `artifacts/firefox.zip` i `artifacts/source.zip`.
-3. AMO → *Submit a New Add-on* → *On this site* → wgraj `firefox.zip`.
-4. **Wgraj źródła.** Kod jest bundlowany i minifikowany, więc AMO wymaga
-   archiwum źródeł — `artifacts/source.zip` (`git archive` z `HEAD`, więc
-   najpierw commit) plus instrukcji budowania: Node 20, `npm ci`, `npm run build:firefox`, wynik
-   w `dist/firefox`.
-5. **Zbieranie danych: żadne.** Manifest deklaruje
-   `browser_specific_settings.gecko.data_collection_permissions.required: ["none"]`
-   — to samo zaznacz w formularzu.
-6. **Uzasadnij uprawnienia** w polu dla recenzenta: `activeTab` + `scripting`
-   (wstrzyknięcie content scriptu na żądanie), `storage`/`unlimitedStorage`
-   (IndexedDB z treścią artykułów), `downloads` (eksport kopii), `alarms`
-   (dobowa kopia metadanych i opcjonalna synchronizacja), `contextMenus`,
-   `notifications`, `optional_host_permissions`: `<all_urls>` (pobranie linku)
-   oraz `https://api.github.com/*` (opcjonalna synchronizacja) — o oba prosimy
-   runtime'owo, z gestu użytkownika.
-7. Wersja minimalna to Firefox 140 (desktop) i 142 (Android) — tego wymaga klucz
-   `data_collection_permissions`.
+The version lives in `package.json` and goes into the manifest from there. A
+release is `npm version <patch|minor|major>` and a push of the `vX.Y.Z` tag; CI
+builds all three packages and creates a GitHub release. `source.zip` is a
+`git archive` of `HEAD`, so commit everything before `release:firefox`.
 
-### Chrome Web Store
-
-1. Konto dewelopera CWS (jednorazowa opłata rejestracyjna).
-2. `npm run build && npm run pack` → `artifacts/chrome.zip`.
-3. Dashboard → *Add new item* → wgraj `chrome.zip`.
-4. W zakładce *Privacy practices* zadeklaruj brak zbierania danych i uzasadnij
-   każde uprawnienie (lista jak wyżej + `offscreen`, którego wariant Chromium
-   używa do parsowania HTML-a pobranego w tle — service worker nie ma DOM-u).
-5. Podaj URL polityki prywatności — opublikuj `store/PRIVACY.md` (np. link do
-   pliku na GitHubie).
-6. Wyślij do recenzji. Rozszerzenia z `<all_urls>` — nawet opcjonalnym — bywają
-   sprawdzane dłużej.
+The Firefox build has no `offscreen` page — its event page has a DOM, and the
+`offscreen` API exists only in Chromium.
 
 ---
 
-## Prywatność
+## Privacy
 
-Savely nie ma serwera i nie wysyła niczego w tło. Ruch sieciowy powstaje tylko
-wtedy, gdy Ty go wywołasz:
+Savely has no server and sends nothing in the background. Network traffic
+happens only when you cause it:
 
-- pobranie strony, którą zapisujesz (albo z otwartej karty, albo `fetch`-em przy
-  zapisie linku),
-- obrazki z oryginału, wyświetlane w czytniku — do wyłączenia jednym
-  przełącznikiem („nie ładuj obrazków zdalnych"),
-- synchronizacja ustawień czytnika przez `storage.sync`, czyli mechanizm samej
-  przeglądarki, jeśli masz w niej włączone konto,
-- synchronizacja zapisanych pozycji — **tylko gdy sam ją włączysz** i tylko do
-  miejsca, które wskażesz (patrz „Synchronizacja między urządzeniami").
+- loading the page you save (read from the open tab, or `fetch`ed when you save
+  a link),
+- images from the original page shown in the reader — can be turned off
+  ("Don't load remote images"),
+- reader settings through `storage.sync`, i.e. the browser's own sync, if you
+  are signed in to it.
 
-Zero telemetrii, zero analityki, zero zewnętrznych czcionek i CDN-ów. Wszystkie
-zależności są w paczce; CSP rozszerzenia zostaje domyślne i restrykcyjne.
+Saved items are not synced. To move them to another device or browser, export a
+ZIP on the options page and import it on the other side.
+
+No telemetry, no analytics, no external fonts or CDNs. All dependencies are
+bundled; the extension keeps the default, strict CSP. Full policy:
+[`store/PRIVACY.md`](store/PRIVACY.md).
 
 ---
 
-## Licencja
+## License
 
-MIT.
+[MIT](LICENSE)

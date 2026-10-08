@@ -29,8 +29,7 @@
     "open_in_tab": true
   },
   "optional_host_permissions": [
-    "<all_urls>",
-    "https://api.github.com/*"
+    "<all_urls>"
   ],
   "commands": {
     "save-current-page": {

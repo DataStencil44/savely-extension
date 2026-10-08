@@ -37,11 +37,16 @@
         <h2 class="card__title">Export</h2>
         <p class="muted">
           A full backup holds everything: items, article content, highlights and the schema
-          version. HTML bookmarks are just the address, title and tags — in a format every
+          version. Import it into Savely in any browser — Firefox, Chrome or on your phone.
+          The ZIP is the same backup compressed, with your links as HTML bookmarks inside.
+          HTML bookmarks alone are just the address, title and tags — in a format every
           browser can import.
         </p>
         <div class="row">
-          <button id="export-json" class="button" type="button">Full backup (JSON)</button>
+          <button id="export-zip" class="button" type="button">Full backup (ZIP)</button>
+          <button id="export-json" class="button button--ghost" type="button">
+            Full backup (JSON)
+          </button>
           <button id="export-html" class="button button--ghost" type="button">
             Bookmarks (HTML)
           </button>
@@ -51,7 +56,8 @@
       <section class="card">
         <h2 class="card__title">Import</h2>
         <p class="muted">
-          A Savely backup (<code>.json</code>) or a Pocket export (<code>.csv</code>).
+          A Savely backup (<code>.zip</code> or <code>.json</code>) or a Pocket export
+          (<code>.csv</code>).
           Items with the same address are merged, not duplicated — an import never deletes
           anything and never overwrites content you already have.
         </p>
@@ -61,49 +67,10 @@
             id="import-file"
             class="file__input"
             type="file"
-            accept=".json,.csv,application/json,text/csv"
+            accept=".zip,.json,.csv,application/zip,application/json,text/csv"
           />
         </label>
         <div id="report" class="report" hidden></div>
-      </section>
-
-      <section class="card">
-        <h2 class="card__title">Sync across devices</h2>
-        <p class="muted">
-          Optional and off by default. Savely has no server — your data travels through a place
-          you pick yourself, and nowhere else.
-        </p>
-
-        <div class="row">
-          <label class="field">
-            <span class="field__label">Provider</span>
-            <select id="sync-provider" class="field__input"></select>
-          </label>
-        </div>
-
-        <p id="sync-location" class="warn"></p>
-
-        <div id="sync-connect" class="connect">
-          <label class="field">
-            <span id="sync-secret-label" class="field__label"></span>
-            <input id="sync-secret" class="field__input" type="password" autocomplete="off" spellcheck="false" />
-          </label>
-          <p id="sync-help" class="muted"></p>
-          <button id="sync-authorize" class="button" type="button">Connect</button>
-        </div>
-
-        <div id="sync-connected" class="connect" hidden>
-          <p id="sync-target" class="muted"></p>
-          <p id="sync-status" class="muted"></p>
-          <div class="row">
-            <button id="sync-now" class="button" type="button">Sync now</button>
-            <button id="sync-disconnect" class="button button--ghost" type="button">Disconnect</button>
-          </div>
-          <label class="settings__check">
-            <input id="sync-auto" type="checkbox" />
-            Sync automatically every 30 minutes
-          </label>
-        </div>
       </section>
 
       <section class="card">

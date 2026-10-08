@@ -20,6 +20,8 @@
     "pack": "npm run pack:chrome && npm run pack:firefox",
     "pack:chrome": "web-ext build --source-dir dist/chrome --artifacts-dir artifacts --filename chrome.zip --overwrite-dest",
     "pack:firefox": "web-ext build --source-dir dist/firefox --artifacts-dir artifacts --filename firefox.zip --overwrite-dest",
+    "release:chrome": "npm run build:chrome && npm run pack:chrome",
+    "release:firefox": "npm run build:firefox && npm run pack:firefox && npm run pack:source",
     "pack:source": "node -e \"require('fs').mkdirSync('artifacts',{recursive:true})\" && git archive --format=zip --output artifacts/source.zip HEAD",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",

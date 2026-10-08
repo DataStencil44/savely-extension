@@ -2,7 +2,6 @@ import browser from 'webextension-polyfill';
 
 import { createSnapshotIfDue } from '@/lib/db';
 import { clearBadge, flashSaved, notifyProblem } from '@/lib/feedback';
-import { SYNC_ALARM, activeProvider, applyAutoSync, loadSyncState, syncNow } from '@/lib/sync';
 import { onMessage } from '@/lib/messaging';
 import { savePageInTab, saveLinkInBackground } from '@/lib/save';
 import type { SaveResult } from '@/lib/save';
@@ -70,37 +69,16 @@ function scheduleDailyBackup(): void {
   void browser.alarms.create(BACKUP_ALARM, { delayInMinutes: 1, periodInMinutes: DAY_MINUTES });
 }
 
-async function runScheduledSync(): Promise<void> {
-  const state = await loadSyncState();
-  if (!state.auto) return;
-
-  const provider = await activeProvider();
-  if (provider === null) return;
-
-  await syncNow(provider);
-}
-
 browser.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === BACKUP_ALARM) {
     void createSnapshotIfDue().catch((error: unknown) => {
       console.error('[savely] the daily backup failed:', error);
-    });
-    return;
-  }
-
-  if (alarm.name === SYNC_ALARM) {
-    void runScheduledSync().catch((error: unknown) => {
-      console.warn('[savely] automatic sync failed:', error);
     });
   }
 });
 
 function restoreAlarms(): void {
   scheduleDailyBackup();
-  void loadSyncState().then(
-    (state) => applyAutoSync(state.auto),
-    () => undefined,
-  );
 }
 
 browser.runtime.onStartup.addListener(restoreAlarms);

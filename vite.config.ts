@@ -61,7 +61,7 @@ export default defineConfig(({ mode }) => {
           list: resolve(srcDir, 'ui/list/list.html'),
           reader: resolve(srcDir, 'ui/reader/index.html'),
           options: resolve(srcDir, 'ui/options/options.html'),
-          offscreen: resolve(srcDir, 'offscreen/offscreen.html'),
+          ...(target === 'chrome' ? { offscreen: resolve(srcDir, 'offscreen/offscreen.html') } : {}),
         },
         output: {
           entryFileNames: '[name].js',
